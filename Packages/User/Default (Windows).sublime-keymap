@@ -1,0 +1,6 @@
+[
+	{ "keys": ["f8"], "command": "permute_lines", "args": {"operation": "unique"} },
+	{ "keys": ["ctrl+alt+t"], "command": "tree" },
+	{ "keys": ["alt+left"], "command": "navigation_history_back"},
+  	{ "keys": ["alt+right"], "command": "navigation_history_forward"}
+]

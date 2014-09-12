@@ -1,0 +1,6 @@
+{
+	"windows" : {
+		"cmd": ["D:/Progress/v11.3/dlc/bin/prowin32.exe", "compilefile=C:/Users/andreica/AppData/Roaming/Sublime Text 2/Packages/ProgressCompile/compiler.p", "-p", "$file"], 
+		"selector" : "source.Progress4gl"
+	}
+}

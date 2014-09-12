@@ -1,0 +1,15 @@
+{
+	"installed_packages":
+	[
+		"4GL",
+		"Alignment",
+		"AlignTab",
+		"Clipboard History",
+		"FileDiffs",
+		"Git",
+		"JsFormat",
+		"Navigation History",
+		"Package Control",
+		"SublimeCodeIntel"
+	]
+}

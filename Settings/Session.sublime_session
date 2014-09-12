@@ -1,0 +1,628 @@
+{
+	"folder_history":
+	[
+	],
+	"last_window_id": 1,
+	"settings":
+	{
+	},
+	"windows":
+	[
+		{
+			"auto_complete":
+			{
+				"selected_items":
+				[
+					[
+						"cur",
+						"current_node"
+					],
+					[
+						"righ",
+						"RIGHT_COEF"
+					],
+					[
+						"curr",
+						"current_path"
+					],
+					[
+						"to",
+						"toString"
+					],
+					[
+						"print",
+						"print_tiles_obj"
+					],
+					[
+						"fire",
+						"fireKey"
+					],
+					[
+						"get_ti",
+						"get_tiles_template"
+					],
+					[
+						"eval",
+						"eval_no_tiles"
+					],
+					[
+						"new",
+						"new_tiles1"
+					],
+					[
+						"max",
+						"max_dir"
+					]
+				]
+			},
+			"buffers":
+			[
+				{
+					"file": "/E/MyWorkspace/resume/resume.json",
+					"settings":
+					{
+						"buffer_size": 6127,
+						"line_ending": "Unix"
+					}
+				},
+				{
+					"contents": "\n\n/* =================== CONSTANTS ========================== */\n// var TILE_EVAL_BASE = 3; // these two values are used as coeficient for the number of tiles. the more tiles there are, the greater the coeficient\n// var TILE_EVAL_COEF = 0.5; // so that the algorithm would choose the path that minimises the number of tiles\n// var LR_STRATEGY_COEF = 2; // the coeficinet for choosing a move in the set (right, up, down) so that all values remain in a corners\n// var UP_COEF = 15;\n// var RIGHT_COEF = 5;\n// var DOWN_COEF = 1;\n// var LEFT_COEF = 0.5;\n// var RESET_NUMBER = 3;\n\n// keep these values between 0 and 1 for the coeficients that represent bad behaviour\nvar CORNER_TILE_COEF_BAD = 0.1;\nvar DIRECTION_LEFT_COEF = 0.02;\nvar HIGH_NUMBERS_DONT_STICK_TOGETHER = 0.7;\n\n// keep these values over 1 for the coeficients that represnt good behaviour\nvar CORNER_TILE_COEF_GOOD = 1.40;\nvar HIGH_NUMBERS_STICK_TOGETHER = 1.05;\n\n// how many times large than the current fit must the new fit be to drop the old one\nvar FIT_MAGNITUDE = 1.3;\n\n\n\n/*\n\nCreate all graph, find best path with the two evaluation functions; holdd that path until a best one is found.\nProblems: will a better one arrive? If the current one stays for long, tiles will gather and the new path should be focused more on clearing the tiles.\n\n*/\n\nfunction fireKey(el)\n{\n    var key;\n    switch(el)\n    {\n        case \"left\":\n        key = 37;\n        break;\n        case \"right\":\n        key = 39;\n        break;  \n        case \"up\":\n        key = 38;\n        break;\n        case \"down\":\n        key = 40;  \n    }\n \n    if(document.createEventObject) {\n        var eventObj = document.createEventObject();\n        eventObj.keyCode = key;\n        el.fireEvent(\"onkeydown\", eventObj);  \n    } else if(document.createEvent) {\n        var eventObj = document.createEvent(\"Events\");\n        eventObj.initEvent(\"keydown\", true, true);\n        eventObj.which = key;\n        document.body.dispatchEvent(eventObj);\n    }\n}\n\nfunction get_tile(x, y) {\n	var xpath_tile_new =\"/html/body/div[@class='container']/div[@class='game-container']\"\n		 				   + \"/div[@class='tile-container']/div[contains(@class,'tile-position-\" + x.toString() + \"-\" + y.toString() + \" tile-new')]\"\n		 				   + \"/div[@class='tile-inner']/text()\";\n\n	var xpath_tile_merged =\"/html/body/div[@class='container']/div[@class='game-container']\"\n		 				   + \"/div[@class='tile-container']/div[contains(@class,'tile-position-\" + x.toString() + \"-\" + y.toString() + \" tile-merged')]\"\n		 				   + \"/div[@class='tile-inner']/text()\";	\n\n	var xpath_basic =\"/html/body/div[@class='container']/div[@class='game-container']\"\n		 				   + \"/div[@class='tile-container']/div[contains(@class,'tile-position-\" + x.toString() + \"-\" + y.toString() + \"')]\"\n		 				   + \"/div[@class='tile-inner']/text()\";\n	var res;\n	if((res = document.evaluate(xpath_tile_merged, document, null, XPathResult.ANY_TYPE, null).iterateNext()) != null) {\n		return parseInt(res.data);\n	}\n\n	if((res = document.evaluate(xpath_tile_new, document, null, XPathResult.ANY_TYPE, null).iterateNext()) != null) {\n		return parseInt(res.data);\n	}\n\n	if((res = document.evaluate(xpath_basic, document, null, XPathResult.ANY_TYPE, null).iterateNext()) != null) {\n		return parseInt(res.data);\n	}\n\n	return null;\n}\n\nfunction get_tiles_template() {\n	var game = {};\n	for (i = 0; i <= 5; i++) {\n		game[i] = {}\n		for (j = 0; j <= 5; j++) {\n			game[i][j] = null;\n		}\n	}\n	game.direction = \"new\";\n	return game;\n}\n\nfunction get_tiles() {\n	game = get_tiles_template();\n	for (i = 1; i <= 4; i++) {\n		for (j = 1; j <= 4; j++) {\n			game[j][i] = get_tile(i, j);\n		}\n	}\n	return game;\n}\n\nfunction stack(direction, tiles) {\n	new_tile = get_tiles_template()\n	var curr_pos;\n	switch(direction) {\n		case \"down\": {\n			// for each column\n			for(column = 1; column <= 4; column++) {\n				curr_row = 4;\n				// for each row, upwards\n				for(row = 4; row > 0; row--) {\n					if(tiles[row][column] != null) {\n						new_tile[curr_row][column] = tiles[row][column];\n						curr_row --;\n					}\n				}\n			}\n			break;\n		}\n		case \"up\": {\n			// for each column\n			for(column = 1; column <= 4; column++) {\n				curr_row = 1;\n				// for each row, downwards\n				for(row = 1; row <= 4; row++) {\n					if(tiles[row][column] != null) {\n						new_tile[curr_row][column] = tiles[row][column];\n						curr_row ++;\n					}\n				}\n			}\n			break;\n		}\n		case \"left\": {\n			// for each row\n			for(row = 1; row <= 4; row++) {\n				curr_column = 1;\n				// for each column, from right to left\n				for(column = 1; column <= 4; column++) {\n					if(tiles[row][column] != null) {\n						new_tile[row][curr_column] = tiles[row][column];\n						curr_column ++;\n					} \n				}\n			}\n			break;\n		}\n		case \"right\": {\n			// for each row\n			for(row = 1; row <= 4; row++) {\n				curr_column = 4;\n				// for each column, from right to left\n				for(column = 4; column > 0; column--) {\n					if(tiles[row][column] != null) {\n						new_tile[row][curr_column] = tiles[row][column];\n						curr_column --;\n					}\n				}\n			}\n			break;\n		}\n\n	}\n	return new_tile\n}\n\nfunction merge(direction, tiles, cmp) {\n	if(!direction || !tiles) {\n		console.error(\"direction or tiles came wrong\");\n		return null;\n	}\n	cmp = cmp || false;\n	var new_tile = get_tiles_template()\n	switch(direction) {\n		case \"down\": {\n			for(var column = 1; column <= 4; column ++) {\n				var curr_row = 4\n				for(row = 4; row >= 1; row --) {\n					if(tiles[row][column] == null) {\n						continue;\n					}\n\n					var ahead_row = row - 1;\n					while(ahead_row > 1 && tiles[ahead_row][column] == null) {\n						ahead_row --;\n					}\n\n					if(tiles[row][column] == tiles[ahead_row][column]) {\n						new_tile[curr_row][column] = 2 * tiles[row][column];\n						row = ahead_row;\n					} else {\n						new_tile[curr_row][column] = tiles[row][column];\n					}\n\n					curr_row --;\n				}\n			}\n			new_tile.direction = \"down\";\n			break;\n		}\n		case \"up\": {\n			for(var column = 1; column <= 4; column ++) {\n				var curr_row = 1\n				for(var row = 1; row <= 4; row ++) {\n					if(tiles[row][column] == null) {\n						continue;\n					}\n\n					var ahead_row = row + 1;\n					while(ahead_row < 4 && tiles[ahead_row][column] == null) {\n						ahead_row ++;\n					}\n\n					if(tiles[row][column] == tiles[ahead_row][column]) {\n						new_tile[curr_row][column] = 2 * tiles[row][column];\n						row = ahead_row;\n					} else {\n						new_tile[curr_row][column] = tiles[row][column];\n					}\n\n					curr_row ++;\n				}\n			}\n			new_tile.direction = \"up\";\n			break;\n		}\n		case \"left\": {\n			for(var row = 1; row <= 4; row ++) {\n				curr_col = 1\n				for(var column = 1; column <= 4; column ++) {\n					if(tiles[row][column] == null) {\n						continue;\n					}\n\n					var ahead_col = column + 1;\n					while(ahead_col < 4 && tiles[row][ahead_col] == null) {\n						ahead_col ++;\n					}\n\n					if(tiles[row][column] == tiles[row][ahead_col]) {\n						new_tile[row][curr_col] = 2 * tiles[row][column];\n						column = ahead_col;\n					} else {\n						new_tile[row][curr_col] = tiles[row][column];\n					}\n\n					curr_col ++;\n				}\n			}\n			new_tile.direction = \"left\";\n			break;\n		}\n\n		// if there is only one value on right, and you move it to the left it moves the value to the left but the other value remains\n		case \"right\": {\n			for(var row = 1; row <= 4; row ++) {\n				var curr_col = 4\n				for(var column = 4; column >= 1; column --) {\n					if(tiles[row][column] == null) {\n						continue;\n					}\n\n					var ahead_col = column - 1;\n					while(ahead_col > 1 && tiles[row][ahead_col] == null) {\n						ahead_col --;\n					}\n\n					if(tiles[row][column] == tiles[row][ahead_col]) {\n						new_tile[row][curr_col] = 2 * tiles[row][column];\n						column = ahead_col;\n					} else {\n						new_tile[row][curr_col] = tiles[row][column];\n					}\n\n					curr_col --;\n				}\n			}\n		}\n		new_tile.direction = \"right\";\n		break;\n	}\n\n	// return null if the new tile is identical with the old one tile-wise or eval-wise\n	if(compare(tiles, new_tile) ) { // || eval(tiles) == eval(new_tile)\n		return null;\n	}\n\n	return new_tile;\n}\n\n\nfunction eval(tiles) {\n	function get_tile_obj() {\n		var obj = new Object();\n		obj.x = 0;\n		obj.y = 0;\n		obj.value = 0;\n\n		return obj;\n	}\n\n	var no_tiles = 0;\n	var max = get_tile_obj();\n	var sum = 0;\n	for(row = 1; row <= 4; row ++) {\n		for(column = 1; column <= 4; column ++) {\n			if((val = tiles[row][column]) != null) {\n				no_tiles ++;\n				sum += val * val / 2048;\n\n				// for corner high tile\n				if(max.value < tiles[row][column]) {\n					max.value = tiles[row][column];\n					max.x = row;\n					max.y = column;\n				}\n			}\n		}\n	}\n\n	// if the  highest number tile is not in the corner, apply CORNER_TILE_COEF_BAD\n	if( ! (max.x == 1 && max.y == 4 || max.x == 4 && max.y == 4)) {\n		sum =  sum * CORNER_TILE_COEF_BAD;\n	} else {\n		sum = sum + CORNER_TILE_COEF_GOOD;\n	}\n\n\n\n	// so that left would not be encouraged\n	if(tiles.direction == \"left\") {\n		sum = sum * DIRECTION_LEFT_COEF;\n	}\n\n	return sum;\n}\n\n\n\nfunction shuffle(tiles) {\n	var dirs = [\"right\", \"up\", \"down\", \"left\"];\n	var res = [];\n	for(var index in dirs) {\n		var new_tiles = merge(dirs[index], tiles);\n		if(!compare(tiles, new_tiles)) {\n			new_tiles.direction = dirs[index];\n			res.push(new_tiles);\n		}\n	}\n\n	return res;\n}\n\nfunction debug(str, obj) {\n	console.info(str);\n	console.debug(obj);\n}\n\nfunction get_node(tiles) {\n	if(tiles == null) {\n		return null;\n	}\n	var obj = new Object();\n	obj.direction = tiles.direction || \"init\";\n	obj.tiles = tiles;\n	obj.left = null;\n	obj.right = null;;\n	obj.left = null;\n	obj.up = null;\n	obj.parent = null;\n	obj.fit = 0;\n	obj.no = 0;\n\n	return obj;\n}\n\nfunction print_tiles(tiles, fit) {\n	fit = fit || 0;\n	var res = \"direction: \" + tiles.direction + \"\\n\";\n	res += \"fitness: \" + fit.toString() + \"\\n\";\n	for(i = 1; i <= 4; i ++) {\n		var str = \"\"\n		for(j = 1; j <= 4; j++) {\n			if(tiles[i][j] != null) {\n				str += tiles[i][j].toString() + \"    \";\n			} else {\n				str += \"na    \";\n			}\n		}\n		res += str + \"\\n\";\n	}\n	console.info(res);\n}\n\nfunction print_tiles_obj(obj) {\n	var res = \"direction: \" + obj.tiles.direction + \"\\n\";\n	res += \"fitness: \" + obj.fit.toString() + \"\\n\";\n	res += \"order number: \" + obj.no.toString() + \"\\n\";\n	for(i = 1; i <= 4; i ++) {\n		var str = \"\"\n		for(j = 1; j <= 4; j++) {\n			if(obj.tiles[i][j] != null) {\n				str += obj.tiles[i][j].toString() + \"    \";\n			} else {\n				str += \"na    \";\n			}\n		}\n		res += str + \"\\n\";\n	}\n	console.info(res);\n}\n\n\nfunction compare(first, second) {\n	for(row = 1; row <= 4; row ++) {\n		for(column = 1; column <= 4; column ++) {\n			if(first[row][column] != second[row][column]) {\n				return false;\n			}\n		}\n	}\n\n	return true;\n}\n\nfunction build_tree(tiles, depth) {\n	var no = 0;\n	depth = depth || 3;\n\n	var tree = get_node(tiles);\n	var queue = [tree];\n\n	while(queue.length && depth) {\n		// get current node from which to expand and the related values\n		var d_obj, l_obj, u_obj, r_obj;\n		d_obj = l_obj = r_obj = u_obj = null;\n		current_node = queue.shift();\n		// put the shuffled tiles in the tree;\n		// create new node for the newly created tiles (sh_tiles)\n		r_obj = get_node(merge(\"right\",current_node.tiles));\n		u_obj = get_node(merge(\"up\",current_node.tiles));\n		d_obj = get_node(merge(\"down\",current_node.tiles));\n		l_obj = get_node(merge(\"left\",current_node.tiles));\n		if(l_obj != null) {\n			no++;\n			l_obj.fit = eval(l_obj.tiles); //* eval_no_tiles(l_obj.tiles);\n			current_node.left = l_obj;\n			l_obj.parent = current_node;\n			l_obj.no = no;\n			queue.push(l_obj);\n			print_tiles_obj(l_obj);\n			console.info(\"parent: \" + current_node.no);\n		}\n\n		if(r_obj != null) {\n			no++;\n			r_obj.fit = eval(r_obj.tiles); //* eval_no_tiles(r_obj.tiles);\n			current_node.right = r_obj;\n			r_obj.parent = current_node;\n			r_obj.no = no;\n			queue.push(r_obj);\n			print_tiles_obj(r_obj);\n			console.info(\"parent: \" + current_node.no);\n		}\n\n		if(u_obj != null) {\n			no++;\n			u_obj.fit = eval(u_obj.tiles); //* eval_no_tiles(u_obj.tiles);\n			current_node.up = u_obj;\n			u_obj.parent = current_node;\n			u_obj.no = no;\n			queue.push(u_obj);\n			print_tiles_obj(u_obj);\n			console.info(\"parent: \" + current_node.no);\n		}\n\n		if(d_obj != null) {\n			no++;\n			d_obj.fit = eval(d_obj.tiles); //* eval_no_tiles(d_obj.tiles);\n			current_node.down = d_obj;\n			d_obj.parent = current_node;\n			d_obj.no = no;\n			queue.push(d_obj);\n			print_tiles_obj(d_obj);\n			console.info(\"parent: \" + current_node.no);\n		}\n\n		depth--;\n	}\n\n	tree.parent = null;\n\n	//console.error(\"number of nodes: \" + no.toString());\n	return tree;\n}\n\nfunction get_path(tree) {\n	console.debug(tree);\n	var queue = [tree];\n	var max_node = get_node(get_tiles_template());\n	var no = 0;\n	while(queue.length) {\n		no++;\n		var current = queue.shift();\n\n		if(max_node.fit < current.fit) {\n			max_node = current;\n		}\n\n		if(current.right != null) {\n			queue.push(current.right);\n		}\n\n		if(current.up != null)    {\n			queue.push(current.up);\n		}\n\n		if(current.down != null)  {\n			queue.push(current.down);\n		}\n\n		if(current.left != null)  {\n			queue.push(current.left);\n		}\n	}\n\n	var path = new Object();\n	path.dirs = [];\n	path.fit = max_node.fit;\n	// console.debug(max_node);\n	// print_tiles_obj(max_node);\n	while(max_node != null) {\n		console.info(1);\n		path.dirs.unshift(max_node.direction);\n		max_node = max_node.parent;\n	}\n	path.dirs.shift();\n\n	return path;\n}\n\n\nvar current_path = new Object();\ncurrent_path.dirs = [];\ncurrent_path.fit = 0;\nvar k = 2;\nvar func = function()  {\n	latest_path = null;\n	tiles_wrk = get_tiles();\n	tree_wrk = build_tree(tiles_wrk, 4);\n	latest_path = get_path(tree_wrk);\n\n\n	console.info(\"current fit: \" + current_path.fit);\n	console.info(\"current path: \" + current_path.dirs.toString());\n\n	if( (k == 0 || current_path == null || !current_path.dirs.length) || latest_path.fit >= current_path.fit * FIT_MAGNITUDE)  { // || current_path.fit < latest_path.fit\n		current_path = latest_path;\n		console.info(\"changed\");\n		console.info(\"current fit: \" + current_path.fit);\n		console.info(\"current path: \" + current_path.dirs.toString());\n		k = 3;\n	}\n\n\n	var dir = current_path.dirs.shift();\n	console.info(dir);\n	fireKey(dir);\n	k--;\n}\n\n\nsetInterval(func, 500);",
+					"file": "/E/MyWorkspace/2048_bot/game.js",
+					"file_size": 14779,
+					"file_write_time": 130549081227784079,
+					"settings":
+					{
+						"buffer_size": 14007,
+						"line_ending": "Unix"
+					}
+				},
+				{
+					"contents": "&ANALYZE-SUSPEND _VERSION-NUMBER UIB_v9r12 GUI\n&ANALYZE-RESUME\n&Scoped-define WINDOW-NAME C-Win\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CUSTOM _DEFINITIONS C-Win\n/*\n  File:        bnk_acc_ext.w\n  Description: Function [dsc_tbl]\n*/\n\nCREATE WIDGET-POOL.\n/******************************************************************************/\n/* GLOBALE VARIABELEN DEFINITIE                                               */\n/******************************************************************************/\n{d01_alg_log.i}\n{app_srv.i}\n\n\n/******************************************************************************/\n/* INPUT / OUTPUT PARAMETERS                                                  */\n/******************************************************************************/\nDEFINE INPUT-OUTPUT  PARAMETER p-idt_bnk_acc LIKE bnk_acc_ext.idt_bnk_acc      NO-UNDO.\nDEFINE INPUT         PARAMETER p-typ_fun     AS CHARACTER                      NO-UNDO.\nDEFINE OUTPUT        PARAMETER p-cod_can     AS LOGICAL                        NO-UNDO.\n\n/******************************************************************************/\n/* STANDAARD VARIABELEN DEFINITIE                                             */\n/******************************************************************************/\n{std_var.i}\n\n/******************************************************************************/\n/* VARIABELEN DEFINITIE                                                       */\n/******************************************************************************/\nDEFINE VARIABLE v-rowid                AS ROWID                         NO-UNDO.\nDEFINE VARIABLE k-idt_bnk_acc          AS INTEGER                       NO-UNDO.\n\nDEFINE VARIABLE v-flg_add              AS LOGICAL                       NO-UNDO INIT FALSE.\nDEFINE VARIABLE v-flg_cha              AS LOGICAL                       NO-UNDO INIT FALSE.\nDEFINE VARIABLE v-flg_del              AS LOGICAL                       NO-UNDO INIT FALSE.\n\nDEFINE VARIABLE v-cod_err              AS INTEGER FORMAT \">>9\":U        NO-UNDO INIT 1.\nDEFINE VARIABLE v-cod_can              AS LOGICAL                       NO-UNDO.\n\nDEFINE VARIABLE v-cod_tal              AS CHARACTER                     NO-UNDO.\nDEFINE VARIABLE v-nam_tbl              AS CHARACTER                     NO-UNDO.\n\nDEFINE VARIABLE v-bnk_acc_grp          AS CHARACTER                     NO-UNDO INIT 'External':U.\nDEFINE VARIABLE v-idt_bnk_acc          AS INTEGER                       NO-UNDO.\nDEFINE VARIABLE v-wid_hdl              AS HANDLE                        NO-UNDO.\nDEFINE VARIABLE v-flg                  AS LOGICAL                       NO-UNDO.\n\n/******************************************************************************/\n/* VARIABELEN DEFINITIE TBV OPSTARTEN PROFRAMMA'S                             */\n/******************************************************************************/\nDEFINE VARIABLE v-sub_prc_par          AS HANDLE                        NO-UNDO.\nDEFINE VARIABLE v-sub_prc_hdl          AS HANDLE                        NO-UNDO.\nDEFINE VARIABLE v-sub_prc_nam          AS CHARACTER                     NO-UNDO.\n\n/******************************************************************************/\n/* VARIABELEN DEFINITIE TBV JUMPS                                             */\n/******************************************************************************/\nDEFINE VARIABLE v-flg_bnk              AS LOGICAL                       NO-UNDO INIT FALSE.\nDEFINE VARIABLE v-flg_cur              AS LOGICAL                       NO-UNDO INIT FALSE.\n\n/******************************************************************************/\n/* TEMPORARY TABLE DEFINITIE                                                  */\n/******************************************************************************/\nDEFINE TEMP-TABLE sub_prc NO-UNDO\n   FIELD sub_prc_nam AS CHARACTER\n   FIELD sub_prc_hdl AS HANDLE\n   FIELD sub_prc_par AS HANDLE\n   INDEX sub_prc_par IS PRIMARY sub_prc_par sub_prc_nam ASCENDING.\n\n{tmp_bnk_acc_ext.i &SUFFIX=\"_wrk\" &FIELDS = \"FIELD typ_src AS CHARACTER\"}\n{tmp_bnk.i         &SUFFIX=\"_wrk\"}\n\n/******************************************************************************/\n/* PRE-PROCESSOR DEFINITIE                                                    */\n/******************************************************************************/\n&SCOPED-DEFINE NUMTBL   2829\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&ANALYZE-SUSPEND _UIB-PREPROCESSOR-BLOCK\n\n/* ********************  Preprocessor Definitions  ******************** */\n\n&Scoped-define PROCEDURE-TYPE Window\n&Scoped-define DB-AWARE no\n\n/* Name of designated FRAME-NAME and/or first browse and/or first query */\n&Scoped-define FRAME-NAME DEFAULT-FRAME\n\n/* Standard List Definitions                                            */\n&Scoped-Define ENABLED-OBJECTS RECT-18 RECT-19 RECT-20 RECT-21 ~\nw-idt_bnk_acc w-cod_cur BTN-JMP BTN-ADD BTN-CHA BTN-DEL BTN-FST BTN-PRV ~\nBTN-NXT BTN-LST BTN-EXI BTN-OKE BTN-CAN BTN-HLP\n&Scoped-Define DISPLAYED-OBJECTS w-idt_bnk_acc w-sta_bnk_acc w-typ_acc ~\nw-dsc_acc w-num_bnk w-nam_bnk w-adr_bnk w-wpl_bnk w-lnd_bnk w-cod_cur ~\nw-dsc_cur w-num_ctr_bnk_acc w-nam_ctr_bnk_acc w-wpl_bnk_acc w-win_tit ~\nw-txt_fun w-txt_brw\n\n/* Custom List Definitions                                              */\n/* BROWSE-BUTTONS,TRANSACTION-BUTTONS,METHODE-BUTTONS,WIJ-VER-BUTTONS,FRAME-KEYS,FRAME-FIELDS */\n&Scoped-define BROWSE-BUTTONS BTN-FST BTN-PRV BTN-NXT BTN-LST\n&Scoped-define TRANSACTION-BUTTONS BTN-OKE BTN-CAN\n&Scoped-define METHODE-BUTTONS BTN-ADD BTN-CHA BTN-DEL\n&Scoped-define WIJ-VER-BUTTONS BTN-CHA BTN-DEL\n&Scoped-define FRAME-KEYS w-idt_bnk_acc\n&Scoped-define FRAME-FIELDS w-sta_bnk_acc w-typ_acc w-num_bnk w-cod_cur ~\nw-num_ctr_bnk_acc w-nam_ctr_bnk_acc w-wpl_bnk_acc\n\n/* _UIB-PREPROCESSOR-BLOCK-END */\n&ANALYZE-RESUME\n\n\n/* ************************  Function Prototypes ********************** */\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION-FORWARD getStatus C-Win\nFUNCTION getStatus RETURNS CHARACTER\n  ( /* parameter-definitions */ )  FORWARD.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION-FORWARD setStatus C-Win\nFUNCTION setStatus RETURNS LOGICAL\n  ( p-sta AS CHARACTER )  FORWARD.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n/* ***********************  Control Definitions  ********************** */\n\n/* Define the widget handle for the window                              */\nDEFINE VAR C-Win AS WIDGET-HANDLE NO-UNDO.\n\n/* Menu Definitions                                                     */\nDEFINE SUB-MENU m_File\n       MENU-ITEM m_Exit         LABEL \"E&xit\"         .\n\nDEFINE MENU MENU-BAR-WIN MENUBAR\n       SUB-MENU  m_File         LABEL \"&File\"         .\n\nDEFINE MENU POPUP-MENU-BTN-JMP\n       MENU-ITEM m_Bank         LABEL \"Bank\"\n       MENU-ITEM m_Currency     LABEL \"Currency\"      .\n\n\n/* Definitions of the field level widgets                               */\nDEFINE BUTTON BTN-ADD\n     LABEL \"&Add\"\n     SIZE-PIXELS 75 BY 21\n     FONT 4.\n\nDEFINE BUTTON BTN-CAN\n     LABEL \"Ca&ncel\"\n     SIZE 15 BY 1\n     FONT 4.\n\nDEFINE BUTTON BTN-CHA\n     LABEL \"&Change\"\n     SIZE 15 BY 1\n     FONT 4.\n\nDEFINE BUTTON BTN-CHK-EXI\n     LABEL \"Ex&it\"\n     SIZE 15 BY 1.\n\nDEFINE BUTTON BTN-CHK-FLT\n     LABEL \"Check &fault\"\n     SIZE 15 BY 1.\n\nDEFINE BUTTON BTN-CHK-OKE\n     LABEL \"Check &Ok\"\n     SIZE 15 BY 1.\n\nDEFINE BUTTON BTN-DEL\n     LABEL \"&Delete\"\n     SIZE 15 BY 1\n     FONT 4.\n\nDEFINE BUTTON BTN-EXI\n     LABEL \"E&xit\"\n     SIZE 15 BY 1\n     FONT 4.\n\nDEFINE BUTTON BTN-FST\n     IMAGE-UP FILE \"btn_1stu\":U\n     LABEL \"\"\n     SIZE 5 BY 1.\n\nDEFINE BUTTON BTN-HLP\n     LABEL \"&Help\"\n     SIZE 13.2 BY 1\n     FONT 4.\n\nDEFINE BUTTON BTN-JMP\n     LABEL \"&Jump to..\"\n     SIZE 13.2 BY 1\n     FONT 4.\n\nDEFINE BUTTON BTN-LST\n     IMAGE-UP FILE \"btn_lstu\":U\n     LABEL \"\"\n     SIZE 5 BY 1.\n\nDEFINE BUTTON BTN-NXT\n     IMAGE-UP FILE \"btn_nxtu\":U\n     LABEL \"\"\n     SIZE 5 BY 1.\n\nDEFINE BUTTON BTN-OKE\n     LABEL \"&Ok\"\n     SIZE 15 BY 1\n     FONT 4.\n\nDEFINE BUTTON BTN-PRV\n     IMAGE-UP FILE \"btn_prvu\":U\n     LABEL \"\"\n     SIZE 5 BY 1.\n\nDEFINE VARIABLE w-adr_bnk AS CHARACTER FORMAT \"X(50)\":U\n     VIEW-AS FILL-IN\n     SIZE 50.8 BY 1 NO-UNDO.\n\nDEFINE VARIABLE w-cod_cur AS CHARACTER FORMAT \"X(3)\":U\n     LABEL \"Currency\"\n     VIEW-AS FILL-IN\n     SIZE 16 BY 1\n     BGCOLOR 16  NO-UNDO.\n\nDEFINE VARIABLE w-dsc_acc AS CHARACTER FORMAT \"X(50)\":U\n     VIEW-AS FILL-IN\n     SIZE 51 BY 1 NO-UNDO.\n\nDEFINE VARIABLE w-dsc_cur AS CHARACTER FORMAT \"X(256)\":U\n     VIEW-AS FILL-IN\n     SIZE 51 BY 1 NO-UNDO.\n\nDEFINE VARIABLE w-idt_bnk_acc AS INTEGER FORMAT \">,>>>,>>9\":U INITIAL 0\n     LABEL \"Bank account\"\n     VIEW-AS FILL-IN\n     SIZE 16 BY 1\n     BGCOLOR 16  NO-UNDO.\n\nDEFINE VARIABLE w-lnd_bnk AS CHARACTER FORMAT \"X(50)\":U\n     VIEW-AS FILL-IN\n     SIZE 50.8 BY 1 NO-UNDO.\n\nDEFINE VARIABLE w-nam_bnk AS CHARACTER FORMAT \"X(50)\":U\n     VIEW-AS FILL-IN\n     SIZE 50.8 BY 1 NO-UNDO.\n\nDEFINE VARIABLE w-nam_ctr_bnk_acc AS CHARACTER FORMAT \"X(50)\":U\n     LABEL \"Account name\"\n     VIEW-AS FILL-IN\n     SIZE 68 BY 1\n     BGCOLOR 16  NO-UNDO.\n\nDEFINE VARIABLE w-num_bnk AS INTEGER FORMAT \">>>>>>>>9\":U INITIAL 0\n     LABEL \"Bank\"\n     VIEW-AS FILL-IN\n     SIZE 16 BY 1\n     BGCOLOR 16  NO-UNDO.\n\nDEFINE VARIABLE w-num_ctr_bnk_acc AS CHARACTER FORMAT \"X(50)\":U\n     LABEL \"Account number\"\n     VIEW-AS FILL-IN\n     SIZE 68 BY 1\n     BGCOLOR 16  NO-UNDO.\n\nDEFINE VARIABLE w-sta_bnk_acc AS CHARACTER FORMAT \"X(10)\":U\n     LABEL \"Status\"\n     VIEW-AS FILL-IN\n     SIZE 20.6 BY 1 NO-UNDO.\n\nDEFINE VARIABLE w-txt_brw AS CHARACTER FORMAT \"X(256)\":U INITIAL \"Browse\"\n      VIEW-AS TEXT\n     SIZE 9 BY .62\n     FGCOLOR 4 FONT 6 NO-UNDO.\n\nDEFINE VARIABLE w-txt_fun AS CHARACTER FORMAT \"X(256)\":U INITIAL \"Functions\"\n      VIEW-AS TEXT\n     SIZE 11 BY .62\n     FGCOLOR 4 FONT 6 NO-UNDO.\n\nDEFINE VARIABLE w-typ_acc AS CHARACTER FORMAT \"X(6)\":U\n     LABEL \"Account type\"\n     VIEW-AS FILL-IN\n     SIZE 16 BY 1\n     BGCOLOR 16  NO-UNDO.\n\nDEFINE VARIABLE w-win_tit AS CHARACTER FORMAT \"X(256)\":U INITIAL \"Titel\"\n      VIEW-AS TEXT\n     SIZE 128 BY 2.14\n     FGCOLOR 4 FONT 8 NO-UNDO.\n\nDEFINE VARIABLE w-wpl_bnk AS CHARACTER FORMAT \"X(50)\":U\n     VIEW-AS FILL-IN\n     SIZE 50.8 BY 1 NO-UNDO.\n\nDEFINE VARIABLE w-wpl_bnk_acc AS CHARACTER FORMAT \"X(50)\":U\n     LABEL \"City\"\n     VIEW-AS FILL-IN\n     SIZE 68 BY 1\n     BGCOLOR 16  NO-UNDO.\n\nDEFINE RECTANGLE RECT-18\n     EDGE-PIXELS 2 GRAPHIC-EDGE  NO-FILL\n     SIZE 49 BY 2.81.\n\nDEFINE RECTANGLE RECT-19\n     EDGE-PIXELS 2 GRAPHIC-EDGE  NO-FILL\n     SIZE 63 BY 2.81.\n\nDEFINE RECTANGLE RECT-20\n     EDGE-PIXELS 2 GRAPHIC-EDGE  NO-FILL\n     SIZE 18.8 BY 2.81.\n\nDEFINE RECTANGLE RECT-21\n     EDGE-PIXELS 2 GRAPHIC-EDGE  NO-FILL\n     SIZE 132 BY 2.95.\n\n\n/* ************************  Frame Definitions  *********************** */\n\nDEFINE FRAME DEFAULT-FRAME\n     w-idt_bnk_acc AT ROW 5.29 COL 36 COLON-ALIGNED\n     w-sta_bnk_acc AT ROW 5.29 COL 83 COLON-ALIGNED\n     w-typ_acc AT ROW 6.48 COL 36 COLON-ALIGNED\n     w-dsc_acc AT ROW 6.48 COL 53 COLON-ALIGNED NO-LABEL\n     w-num_bnk AT ROW 7.67 COL 36 COLON-ALIGNED\n     w-nam_bnk AT ROW 7.67 COL 53 COLON-ALIGNED NO-LABEL\n     w-adr_bnk AT ROW 8.86 COL 53 COLON-ALIGNED NO-LABEL\n     w-wpl_bnk AT ROW 10.05 COL 53 COLON-ALIGNED NO-LABEL\n     w-lnd_bnk AT ROW 11.24 COL 53 COLON-ALIGNED NO-LABEL\n     w-cod_cur AT ROW 12.43 COL 36 COLON-ALIGNED\n     w-dsc_cur AT ROW 12.43 COL 53 COLON-ALIGNED NO-LABEL\n     w-num_ctr_bnk_acc AT ROW 13.62 COL 36 COLON-ALIGNED\n     w-nam_ctr_bnk_acc AT ROW 14.81 COL 36 COLON-ALIGNED\n     w-wpl_bnk_acc AT ROW 16 COL 36 COLON-ALIGNED\n     BTN-JMP AT ROW 18.62 COL 117.8\n     BTN-ADD AT Y 371 X 11\n     BTN-CHA AT ROW 18.67 COL 19\n     BTN-DEL AT ROW 18.67 COL 34.8\n     BTN-FST AT ROW 18.81 COL 70.4\n     BTN-PRV AT ROW 18.81 COL 76.8\n     BTN-NXT AT ROW 18.81 COL 83.2\n     BTN-LST AT ROW 18.81 COL 89.6\n     BTN-CHK-EXI AT ROW 19.24 COL 3.2\n     BTN-CHK-OKE AT ROW 19.24 COL 19\n     BTN-CHK-FLT AT ROW 19.24 COL 34.8\n     BTN-EXI AT ROW 19.81 COL 3.2\n     BTN-OKE AT ROW 19.81 COL 19\n     BTN-CAN AT ROW 19.81 COL 34.8\n     BTN-HLP AT ROW 19.81 COL 117.8\n     w-win_tit AT ROW 1.62 COL 2 COLON-ALIGNED NO-LABEL\n     w-txt_fun AT ROW 17.91 COL 17 COLON-ALIGNED NO-LABEL\n     w-txt_brw AT ROW 17.91 COL 76.4 COLON-ALIGNED NO-LABEL\n     RECT-18 AT ROW 18.24 COL 2\n     RECT-19 AT ROW 18.24 COL 51.4\n     RECT-20 AT ROW 18.24 COL 115\n     RECT-21 AT ROW 1.19 COL 2\n    WITH 1 DOWN NO-BOX KEEP-TAB-ORDER OVERLAY\n         SIDE-LABELS NO-UNDERLINE THREE-D\n         AT COL 1 ROW 1\n         SIZE 133.8 BY 20.48\n         FONT 4.\n\n\n/* *********************** Procedure Settings ************************ */\n\n&ANALYZE-SUSPEND _PROCEDURE-SETTINGS\n/* Settings for THIS-PROCEDURE\n   Type: Window\n   Allow: Basic,Browse,DB-Fields,Window,Query\n   Other Settings: COMPILE\n */\n&ANALYZE-RESUME _END-PROCEDURE-SETTINGS\n\n/* *************************  Create Window  ************************** */\n\n&ANALYZE-SUSPEND _CREATE-WINDOW\nIF SESSION:DISPLAY-TYPE = \"GUI\":U THEN\n  CREATE WINDOW C-Win ASSIGN\n         HIDDEN             = YES\n         TITLE              = \"\"\n         HEIGHT             = 20.48\n         WIDTH              = 133.8\n         MAX-HEIGHT         = 32.38\n         MAX-WIDTH          = 204.8\n         VIRTUAL-HEIGHT     = 32.38\n         VIRTUAL-WIDTH      = 204.8\n         RESIZE             = yes\n         SCROLL-BARS        = no\n         STATUS-AREA        = yes\n         BGCOLOR            = ?\n         FGCOLOR            = ?\n         KEEP-FRAME-Z-ORDER = yes\n         THREE-D            = yes\n         FONT               = 4\n         MESSAGE-AREA       = no\n         SENSITIVE          = yes.\nELSE {&WINDOW-NAME} = CURRENT-WINDOW.\n\nASSIGN {&WINDOW-NAME}:MENUBAR    = MENU MENU-BAR-WIN:HANDLE.\n\n&IF '{&WINDOW-SYSTEM}' NE 'TTY' &THEN\nIF NOT C-Win:LOAD-ICON(\"innovity\":U) THEN\n    MESSAGE \"Unable to load icon: innovity\"\n            VIEW-AS ALERT-BOX WARNING BUTTONS OK.\n&ENDIF\n/* END WINDOW DEFINITION                                                */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CUSTOM _INCLUDED-LIB C-Win\n/* ************************* Included-Libraries *********************** */\n\n{std_fun_prc.i}\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n\n\n/* ***********  Runtime Attributes and AppBuilder Settings  *********** */\n\n&ANALYZE-SUSPEND _RUN-TIME-ATTRIBUTES\n/* SETTINGS FOR WINDOW C-Win\n  NOT-VISIBLE,,RUN-PERSISTENT                                           */\n/* SETTINGS FOR FRAME DEFAULT-FRAME\n   FRAME-NAME                                                           */\n/* SETTINGS FOR BUTTON BTN-ADD IN FRAME DEFAULT-FRAME\n   3                                                                    */\n/* SETTINGS FOR BUTTON BTN-CAN IN FRAME DEFAULT-FRAME\n   2                                                                    */\n/* SETTINGS FOR BUTTON BTN-CHA IN FRAME DEFAULT-FRAME\n   3 4                                                                  */\n/* SETTINGS FOR BUTTON BTN-CHK-EXI IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\nASSIGN\n       BTN-CHK-EXI:HIDDEN IN FRAME DEFAULT-FRAME           = TRUE.\n\n/* SETTINGS FOR BUTTON BTN-CHK-FLT IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\nASSIGN\n       BTN-CHK-FLT:HIDDEN IN FRAME DEFAULT-FRAME           = TRUE.\n\n/* SETTINGS FOR BUTTON BTN-CHK-OKE IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\nASSIGN\n       BTN-CHK-OKE:HIDDEN IN FRAME DEFAULT-FRAME           = TRUE.\n\n/* SETTINGS FOR BUTTON BTN-DEL IN FRAME DEFAULT-FRAME\n   3 4                                                                  */\n/* SETTINGS FOR BUTTON BTN-FST IN FRAME DEFAULT-FRAME\n   1                                                                    */\nASSIGN\n       BTN-FST:PRIVATE-DATA IN FRAME DEFAULT-FRAME     =\n                \"FST\".\n\nASSIGN\n       BTN-JMP:POPUP-MENU IN FRAME DEFAULT-FRAME       = MENU POPUP-MENU-BTN-JMP:HANDLE.\n\n/* SETTINGS FOR BUTTON BTN-LST IN FRAME DEFAULT-FRAME\n   1                                                                    */\nASSIGN\n       BTN-LST:PRIVATE-DATA IN FRAME DEFAULT-FRAME     =\n                \"LST\".\n\n/* SETTINGS FOR BUTTON BTN-NXT IN FRAME DEFAULT-FRAME\n   1                                                                    */\nASSIGN\n       BTN-NXT:PRIVATE-DATA IN FRAME DEFAULT-FRAME     =\n                \"NXT\".\n\n/* SETTINGS FOR BUTTON BTN-OKE IN FRAME DEFAULT-FRAME\n   2                                                                    */\n/* SETTINGS FOR BUTTON BTN-PRV IN FRAME DEFAULT-FRAME\n   1                                                                    */\nASSIGN\n       BTN-PRV:PRIVATE-DATA IN FRAME DEFAULT-FRAME     =\n                \"PRV\".\n\n/* SETTINGS FOR FILL-IN w-adr_bnk IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\n/* SETTINGS FOR FILL-IN w-cod_cur IN FRAME DEFAULT-FRAME\n   6                                                                    */\n/* SETTINGS FOR FILL-IN w-dsc_acc IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\n/* SETTINGS FOR FILL-IN w-dsc_cur IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\n/* SETTINGS FOR FILL-IN w-idt_bnk_acc IN FRAME DEFAULT-FRAME\n   5                                                                    */\n/* SETTINGS FOR FILL-IN w-lnd_bnk IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\n/* SETTINGS FOR FILL-IN w-nam_bnk IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\n/* SETTINGS FOR FILL-IN w-nam_ctr_bnk_acc IN FRAME DEFAULT-FRAME\n   NO-ENABLE 6                                                          */\n/* SETTINGS FOR FILL-IN w-num_bnk IN FRAME DEFAULT-FRAME\n   NO-ENABLE 6                                                          */\n/* SETTINGS FOR FILL-IN w-num_ctr_bnk_acc IN FRAME DEFAULT-FRAME\n   NO-ENABLE 6                                                          */\n/* SETTINGS FOR FILL-IN w-sta_bnk_acc IN FRAME DEFAULT-FRAME\n   NO-ENABLE 6                                                          */\n/* SETTINGS FOR FILL-IN w-txt_brw IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\n/* SETTINGS FOR FILL-IN w-txt_fun IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\n/* SETTINGS FOR FILL-IN w-typ_acc IN FRAME DEFAULT-FRAME\n   NO-ENABLE 6                                                          */\n/* SETTINGS FOR FILL-IN w-win_tit IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\n/* SETTINGS FOR FILL-IN w-wpl_bnk IN FRAME DEFAULT-FRAME\n   NO-ENABLE                                                            */\n/* SETTINGS FOR FILL-IN w-wpl_bnk_acc IN FRAME DEFAULT-FRAME\n   NO-ENABLE 6                                                          */\nIF SESSION:DISPLAY-TYPE = \"GUI\":U AND VALID-HANDLE(C-Win)\nTHEN C-Win:HIDDEN = yes.\n\n/* _RUN-TIME-ATTRIBUTES-END */\n&ANALYZE-RESUME\n\n\n/* Setting information for Queries and Browse Widgets fields            */\n\n&ANALYZE-SUSPEND _QUERY-BLOCK FRAME DEFAULT-FRAME\n/* Query rebuild information for FRAME DEFAULT-FRAME\n     _Options          = \"SHARE-LOCK KEEP-EMPTY\"\n     _Query            is NOT OPENED\n*/  /* FRAME DEFAULT-FRAME */\n&ANALYZE-RESUME\n\n\n\n\n\n/* ************************  Control Triggers  ************************ */\n\n&Scoped-define SELF-NAME C-Win\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL C-Win C-Win\nON END-ERROR OF C-Win\nOR ENDKEY OF {&WINDOW-NAME} ANYWHERE DO:\n   IF THIS-PROCEDURE:PERSISTENT\n   THEN RETURN NO-APPLY.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL C-Win C-Win\nON WINDOW-CLOSE OF C-Win\nDO:\n   APPLY \"CLOSE\":U TO THIS-PROCEDURE.\n   RETURN NO-APPLY.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME BTN-ADD\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL BTN-ADD C-Win\nON CHOOSE OF BTN-ADD IN FRAME DEFAULT-FRAME /* Add */\nDO:\n   RUN Start_Create_Record.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME BTN-CAN\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL BTN-CAN C-Win\nON CHOOSE OF BTN-CAN IN FRAME DEFAULT-FRAME /* Cancel */\nDO:\n   CASE getStatus():\n   WHEN 'ADD':U\n   THEN RUN Cancel_Create_Record.\n   WHEN 'CHA':U\n   THEN RUN Cancel_Change_Record.\n   END CASE.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME BTN-CHA\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL BTN-CHA C-Win\nON CHOOSE OF BTN-CHA IN FRAME DEFAULT-FRAME /* Change */\nDO:\n   RUN Start_Change_Record.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME BTN-CHK-EXI\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL BTN-CHK-EXI C-Win\nON CHOOSE OF BTN-CHK-EXI IN FRAME DEFAULT-FRAME /* Exit */\nDO:\n   APPLY \"CLOSE\":U TO THIS-PROCEDURE.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME BTN-CHK-FLT\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL BTN-CHK-FLT C-Win\nON CHOOSE OF BTN-CHK-FLT IN FRAME DEFAULT-FRAME /* Check fault */\nDO:\n   RUN Check_Record_Fault.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME BTN-CHK-OKE\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL BTN-CHK-OKE C-Win\nON CHOOSE OF BTN-CHK-OKE IN FRAME DEFAULT-FRAME /* Check Ok */\nDO:\n   RUN Check_Record_Checked.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME BTN-DEL\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL BTN-DEL C-Win\nON CHOOSE OF BTN-DEL IN FRAME DEFAULT-FRAME /* Delete */\nDO:\n   RUN Start_Delete_Record.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME BTN-EXI\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL BTN-EXI C-Win\nON CHOOSE OF BTN-EXI IN FRAME DEFAULT-FRAME /* Exit */\nDO:\n   APPLY \"CLOSE\":U TO THIS-PROCEDURE.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME BTN-OKE\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL BTN-OKE C-Win\nON CHOOSE OF BTN-OKE IN FRAME DEFAULT-FRAME /* Ok */\nDO:\n   CASE getStatus():\n   WHEN 'ADD':U\n   THEN RUN Oke_Create_Record.\n   WHEN 'CHA':U\n   THEN RUN Oke_Change_Record.\n   END CASE.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME m_Bank\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL m_Bank C-Win\nON CHOOSE OF MENU-ITEM m_Bank /* Bank */\nDO:\n   IF v-flg_bnk = TRUE THEN DO:\n      v-sub_prc_nam = \"crs000324.w\":U.\n      RUN Start_Program_Value.\n   END.\n   ELSE DO:\n      ASSIGN v-oms_err = {fna GetMessage 2414,v-cod_tal,'':U,'':U}.\n      RUN Display_Message\n         (\n          INPUT  v-oms_err,\n          INPUT  \"WRN\":U,\n          OUTPUT v-flg_oke\n         ).\n   END.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME m_Currency\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL m_Currency C-Win\nON CHOOSE OF MENU-ITEM m_Currency /* Currency */\nDO:\n   IF v-flg_cur = TRUE THEN DO:\n      v-sub_prc_nam = \"crs000004.w\":U.\n      RUN Start_Program_Value.\n   END.\n   ELSE DO:\n      ASSIGN v-oms_err = {fna GetMessage 2414,v-cod_tal,'':U,'':U}.\n      RUN Display_Message\n         (\n          INPUT  v-oms_err,\n          INPUT  \"WRN\":U,\n          OUTPUT v-flg_oke\n         ).\n   END.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME m_Exit\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL m_Exit C-Win\nON CHOOSE OF MENU-ITEM m_Exit /* Exit */\nDO:\n   APPLY \"CLOSE\":U TO THIS-PROCEDURE.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME w-cod_cur\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL w-cod_cur C-Win\nON LEAVE OF w-cod_cur IN FRAME DEFAULT-FRAME /* Currency */\nDO:\n   ASSIGN INPUT FRAME {&FRAME-NAME} w-cod_cur.\n   RUN Get_Frame_Rel_Fields_cod_cur.\n   RUN Dis_Frame_Rel_Fields_cod_cur.\n   ASSIGN w-cod_cur = CAPS(w-cod_cur).\n   DISPLAY w-cod_cur WITH FRAME {&FRAME-NAME}.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL w-cod_cur C-Win\nON MOUSE-SELECT-DBLCLICK OF w-cod_cur IN FRAME DEFAULT-FRAME /* Currency */\nOR F3 OF w-cod_cur IN FRAME {&FRAME-NAME}\nDO:\n   RUN Start_Listbox_cod_cur.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME w-idt_bnk_acc\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL w-idt_bnk_acc C-Win\nON MOUSE-SELECT-DBLCLICK OF w-idt_bnk_acc IN FRAME DEFAULT-FRAME /* Bank account */\nOR F3 OF w-idt_bnk_acc IN FRAME {&FRAME-NAME}\nDO:\n   RUN Start_Listbox_idt_bnk_acc.\n   APPLY \"ENTRY\":U TO SELF.\n   RETURN NO-APPLY.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL w-idt_bnk_acc C-Win\nON RETURN OF w-idt_bnk_acc IN FRAME DEFAULT-FRAME /* Bank account */\nDO:\n   IF getStatus() <> 'INQ':U\n   THEN RETURN.\n\n   ASSIGN INPUT FRAME {&FRAME-NAME} w-idt_bnk_acc.\n   RUN Get_Frame_Related_Fields_idt_bnk_acc.\n   IF v-cod_act = 'OKE':U\n   THEN DO:\n      ASSIGN tmp_bnk_acc_ext_wrk.bnk_acc_ext-rowid = v-rowid.\n      RUN Get_Record (INPUT 'CUR':U).\n   END.\n   ELSE DO:\n      RUN Display_Message\n         (\n          INPUT  v-oms_err,\n          INPUT  v-typ_err,\n          OUTPUT v-flg_oke\n         ).\n      ASSIGN w-idt_bnk_acc = k-idt_bnk_acc.\n      DISPLAY w-idt_bnk_acc WITH FRAME {&FRAME-NAME}.\n   END.\n   APPLY \"ENTRY\":U TO SELF.\n   RETURN NO-APPLY.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME w-num_bnk\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL w-num_bnk C-Win\nON LEAVE OF w-num_bnk IN FRAME DEFAULT-FRAME /* Bank */\nDO:\n   ASSIGN INPUT FRAME {&FRAME-NAME} w-num_bnk.\n   RUN Get_Frame_Rel_Fields_num_bnk.\n   RUN Dis_Frame_Rel_Fields_num_bnk.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL w-num_bnk C-Win\nON MOUSE-SELECT-DBLCLICK OF w-num_bnk IN FRAME DEFAULT-FRAME /* Bank */\nOR F3 OF w-num_bnk IN FRAME {&FRAME-NAME}\nDO:\n   RUN Start_Listbox_num_bnk.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&Scoped-define SELF-NAME w-typ_acc\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL w-typ_acc C-Win\nON LEAVE OF w-typ_acc IN FRAME DEFAULT-FRAME /* Account type */\nDO:\n   ASSIGN INPUT FRAME {&FRAME-NAME} w-typ_acc.\n   RUN Get_Frame_Rel_Fields_typ_acc.\n   RUN Dis_Frame_Rel_Fields_typ_acc.\n   ASSIGN w-typ_acc = CAPS(w-typ_acc).\n   DISPLAY w-typ_acc WITH FRAME {&FRAME-NAME}.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL w-typ_acc C-Win\nON MOUSE-SELECT-DBLCLICK OF w-typ_acc IN FRAME DEFAULT-FRAME /* Account type */\nOR F3 OF w-typ_acc IN FRAME {&FRAME-NAME}\nDO:\n   RUN Start_Listbox_typ_acc.\nEND.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n&UNDEFINE SELF-NAME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CUSTOM _MAIN-BLOCK C-Win\n\n\n{std_fun_mai.i}\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n\n/* **********************  Internal Procedures  *********************** */\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Bepaal_Autorisatie_Jump C-Win\nPROCEDURE Bepaal_Autorisatie_Jump :\n/*------------------------------------------------------------------------------\n  Purpose : Bepaal Autorisatie Jump\n------------------------------------------------------------------------------*/\n\n   /***************************************************************************/\n   /* Autorisatie t.b.v. functie Bank                                         */\n   /***************************************************************************/\n   RUN d01_alg_aut.p\n      (\n       INPUT  \"CRS\":U,\n       INPUT  mtg-idt_usr,\n       INPUT  \"crs000324.w\":U,\n       INPUT  \"Inq\":U,\n       OUTPUT v-cod_err\n      ).\n   IF v-cod_err = 0 THEN v-flg_bnk = TRUE.\n\n   /***************************************************************************/\n   /* Autorisatie t.b.v. functie Currency                                     */\n   /***************************************************************************/\n   RUN d01_alg_aut.p\n      (\n       INPUT  \"CRS\":U,\n       INPUT  mtg-idt_usr,\n       INPUT  \"crs000004.w\":U,\n       INPUT  \"Inq\":U,\n       OUTPUT v-cod_err\n      ).\n   IF v-cod_err = 0 THEN v-flg_cur = TRUE.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Cancel_Change_Record C-Win\nPROCEDURE Cancel_Change_Record :\n/*------------------------------------------------------------------------------\n  Purpose : Cancel Change Record\n------------------------------------------------------------------------------*/\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Start_AppServer_Procedure (INPUT 'Cancel_Change_Record':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   setStatus('INQ':U).\n\n   CASE v-cod_act:\n\n   WHEN 'OKE':U      /* Record gevonden */\n   THEN DO:\n      RUN Fill_Frame.\n      RUN Enable_Frame_Keys.\n      RUN Disable_Frame_Fields.\n      RUN Enable_Browse_Buttons.\n      RUN Enable_Methode_Buttons.\n      RUN Disable_Transaction_Buttons.\n      RUN Enable_Menu_Item.\n      RUN Enable_Button_Exit.\n      RUN Display_Frame.\n      RUN Fill_Parameters.\n      RUN Apply_Entry_To_Field (INPUT 'idt_bnk_acc':U).\n   END. /* OKE */\n\n   WHEN 'FIL_BUF':U  /* Record niet gevonden */\n   THEN DO:\n      RUN Fill_Frame.\n      RUN Disable_Frame_Keys.\n      RUN Disable_Frame_Fields.\n      RUN Disable_Browse_Buttons.\n      RUN Disable_Transaction_Buttons.\n      RUN Enable_Methode_Buttons.\n      RUN Enable_Menu_Item.\n      RUN Enable_Button_Exit.\n      RUN Disable_Buttons_Wij_Ver.\n      RUN Display_Frame.\n   END. /* FIL_BUF */\n\n   END CASE.\n\n   /***************************************************************************/\n   /* Functie automatisch afsluiten indien deze in 'CHA' mode is gestart.     */\n   /***************************************************************************/\n   IF p-typ_fun = 'CHA':U THEN DO:\n      APPLY \"CLOSE\":U TO THIS-PROCEDURE.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Cancel_Create_Record C-Win\nPROCEDURE Cancel_Create_Record :\n/*------------------------------------------------------------------------------\n  Purpose : Cancel Create Record\n------------------------------------------------------------------------------*/\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Start_AppServer_Procedure (INPUT 'Cancel_Create_Record':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   setStatus('INQ':U).\n\n   CASE v-cod_act:\n\n   WHEN 'OKE':U      /* Record gevonden */\n   THEN DO:\n      RUN Fill_Frame.\n      RUN Enable_Frame_Keys.\n      RUN Disable_Frame_Fields.\n      RUN Enable_Browse_Buttons.\n      RUN Enable_Methode_Buttons.\n      RUN Disable_Transaction_Buttons.\n      RUN Enable_Button_Exit.\n      RUN Enable_Menu_Item.\n      RUN Display_Frame.\n      RUN Apply_Entry_To_Field (INPUT 'idt_bnk_acc':U).\n   END. /* OKE */\n\n   WHEN 'FIL_BUF':U  /* Record niet gevonden */\n   THEN DO:\n      RUN Fill_Frame.\n      RUN Disable_Frame_Keys.\n      RUN Disable_Frame_Fields.\n      RUN Disable_Browse_Buttons.\n      RUN Disable_Transaction_Buttons.\n      RUN Enable_Methode_Buttons.\n      RUN Enable_Button_Exit.\n      RUN Enable_Menu_Item.\n      RUN Disable_Buttons_Wij_Ver.\n      RUN Display_Frame.\n   END. /* FIL_BUF */\n\n   END CASE.\n\n   /***************************************************************************/\n   /* Functie automatisch afsluiten indien deze in 'ADD' mode is gestart.     */\n   /***************************************************************************/\n   IF p-typ_fun = 'ADD':U THEN DO:\n      APPLY \"CLOSE\":U TO THIS-PROCEDURE.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Check_Record_Checked C-Win\nPROCEDURE Check_Record_Checked :\n/*------------------------------------------------------------------------------\n  Purpose : Check Record Checked\n------------------------------------------------------------------------------*/\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Start_AppServer_Procedure (INPUT 'Check_Record_Checked':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   CASE v-cod_act:\n   WHEN 'OKE':U      /* Record status Checked\" */\n   THEN DO:\n      APPLY \"CLOSE\":U TO THIS-PROCEDURE.\n   END. /* OKE */\n   END CASE.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Check_Record_Fault C-Win\nPROCEDURE Check_Record_Fault :\n/*------------------------------------------------------------------------------\n  Purpose : Check Record Fault\n------------------------------------------------------------------------------*/\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Start_AppServer_Procedure (INPUT 'Check_Record_Fault':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   CASE v-cod_act:\n   WHEN 'OKE':U      /* Record status \"Fault\" */\n   THEN DO:\n      APPLY \"CLOSE\":U TO THIS-PROCEDURE.\n   END. /* OKE */\n   END CASE.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Create_Temp_Table_Buffers C-Win\nPROCEDURE Create_Temp_Table_Buffers :\n/*------------------------------------------------------------------------------\n  Purpose : Create Temp Table Buffers\n------------------------------------------------------------------------------*/\n\n   CREATE tmp_bnk_acc_ext_wrk.\n   ASSIGN tmp_bnk_acc_ext_wrk.idt_bnk_acc = p-idt_bnk_acc.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Disable_Status_Field C-Win\nPROCEDURE Disable_Status_Field :\n/*------------------------------------------------------------------------------\n  Purpose : Disable Status Field\n------------------------------------------------------------------------------*/\n\n   DISABLE w-sta_bnk_acc WITH FRAME {&FRAME-NAME}.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Disable_UI C-Win  _DEFAULT-DISABLE\nPROCEDURE Disable_UI :\n/*------------------------------------------------------------------------------\n  Purpose:     DISABLE the User Interface\n  Parameters:  <none>\n  Notes:       Here we clean-up the user-interface by deleting\n               dynamic widgets we have created and/or hide\n               frames.  This procedure is usually called when\n               we are ready to \"clean-up\" after running.\n------------------------------------------------------------------------------*/\n  /* Delete the WINDOW we created */\n  IF SESSION:DISPLAY-TYPE = \"GUI\":U AND VALID-HANDLE(C-Win)\n  THEN DELETE WIDGET C-Win.\n  IF THIS-PROCEDURE:PERSISTENT THEN DELETE PROCEDURE THIS-PROCEDURE.\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Display_Frame_Related_Fields C-Win\nPROCEDURE Display_Frame_Related_Fields :\n/*------------------------------------------------------------------------------\n  Purpose : Display Frame Related Fields\n------------------------------------------------------------------------------*/\n\n   RUN Dis_Frame_Rel_Fields_typ_acc.\n   RUN Dis_Frame_Rel_Fields_num_bnk.\n   RUN Dis_Frame_Rel_Fields_cod_cur.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Dis_Frame_Rel_Fields_cod_cur C-Win\nPROCEDURE Dis_Frame_Rel_Fields_cod_cur :\n/*------------------------------------------------------------------------------\n  Purpose : Display Related Frame Fields of w-cod_cur\n------------------------------------------------------------------------------*/\n\n   DO WITH FRAME {&FRAME-NAME} :\n      DISPLAY w-cod_cur w-dsc_cur.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Dis_Frame_Rel_Fields_num_bnk C-Win\nPROCEDURE Dis_Frame_Rel_Fields_num_bnk :\n/*------------------------------------------------------------------------------\n  Purpose : Display Related Frame Fields of w-num_bnk\n------------------------------------------------------------------------------*/\n\n   RUN Set_Bnk_Acc_Num_Fmt.\n\n   DO WITH FRAME {&FRAME-NAME} :\n      DISPLAY w-num_bnk w-nam_bnk w-adr_bnk w-wpl_bnk w-lnd_bnk.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Dis_Frame_Rel_Fields_typ_acc C-Win\nPROCEDURE Dis_Frame_Rel_Fields_typ_acc :\n/*------------------------------------------------------------------------------\n  Purpose : Display Related Frame Fields of w-typ_acc\n------------------------------------------------------------------------------*/\n\n   DO WITH FRAME {&FRAME-NAME} :\n      DISPLAY w-typ_acc w-dsc_acc.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Enable_Check_Buttons C-Win\nPROCEDURE Enable_Check_Buttons :\n/*------------------------------------------------------------------------------\n  Purpose : Enable Check Butons\n------------------------------------------------------------------------------*/\n\n   DO WITH FRAME {&FRAME-NAME} :\n      DISPLAY BTN-CHK-EXI BTN-CHK-OKE BTN-CHK-FLT.\n      ENABLE BTN-CHK-EXI.\n\n      CASE w-sta_bnk_acc :\n      WHEN 'Registered':U\n      THEN DO:\n         IF tmp_bnk_acc_ext_wrk.idt_emp_reg <> mtg-idt_usr\n         THEN ENABLE BTN-CHK-OKE BTN-CHK-FLT.\n      END.\n\n      WHEN 'Corrected':U\n      THEN DO:\n         IF tmp_bnk_acc_ext_wrk.idt_emp_cor <> mtg-idt_usr\n         THEN ENABLE BTN-CHK-OKE BTN-CHK-FLT.\n      END.\n\n      WHEN 'Fault':U\n      THEN DO:\n      END.\n\n      WHEN 'Checked':U\n      THEN DO:\n      END.\n\n      END CASE.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Enable_UI C-Win  _DEFAULT-ENABLE\nPROCEDURE Enable_UI :\n/*------------------------------------------------------------------------------\n  Purpose:     ENABLE the User Interface\n  Parameters:  <none>\n  Notes:       Here we display/view/enable the widgets in the\n               user-interface.  In addition, OPEN all queries\n               associated with each FRAME and BROWSE.\n               These statements here are based on the \"Other\n               Settings\" section of the widget Property Sheets.\n------------------------------------------------------------------------------*/\n  DISPLAY w-idt_bnk_acc w-sta_bnk_acc w-typ_acc w-dsc_acc w-num_bnk w-nam_bnk\n          w-adr_bnk w-wpl_bnk w-lnd_bnk w-cod_cur w-dsc_cur w-num_ctr_bnk_acc\n          w-nam_ctr_bnk_acc w-wpl_bnk_acc w-win_tit w-txt_fun w-txt_brw\n      WITH FRAME DEFAULT-FRAME IN WINDOW C-Win.\n  ENABLE RECT-18 RECT-19 RECT-20 RECT-21 w-idt_bnk_acc w-cod_cur BTN-JMP\n         BTN-ADD BTN-CHA BTN-DEL BTN-FST BTN-PRV BTN-NXT BTN-LST BTN-EXI\n         BTN-OKE BTN-CAN BTN-HLP\n      WITH FRAME DEFAULT-FRAME IN WINDOW C-Win.\n  {&OPEN-BROWSERS-IN-QUERY-DEFAULT-FRAME}\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Fill_Frame_Fields C-Win\nPROCEDURE Fill_Frame_Fields :\n/*------------------------------------------------------------------------------\n  Purpose : Fill Frame Fields\n------------------------------------------------------------------------------*/\n\n   ASSIGN w-typ_acc         = tmp_bnk_acc_ext_wrk.typ_acc\n          w-num_bnk         = tmp_bnk_acc_ext_wrk.num_bnk\n          w-cod_cur         = tmp_bnk_acc_ext_wrk.cod_cur\n          w-num_ctr_bnk_acc = tmp_bnk_acc_ext_wrk.num_ctr_bnk_acc\n          w-nam_ctr_bnk_acc = tmp_bnk_acc_ext_wrk.nam_ctr_bnk_acc\n          w-wpl_bnk_acc     = tmp_bnk_acc_ext_wrk.wpl_bnk_acc\n          w-sta_bnk_acc     = tmp_bnk_acc_ext_wrk.sta_bnk_acc\n          .\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Fill_Frame_Keys C-Win\nPROCEDURE Fill_Frame_Keys :\n/*------------------------------------------------------------------------------\n  Purpose : Fill Frame Keys\n------------------------------------------------------------------------------*/\n\n   ASSIGN w-idt_bnk_acc = tmp_bnk_acc_ext_wrk.idt_bnk_acc\n          k-idt_bnk_acc = tmp_bnk_acc_ext_wrk.idt_bnk_acc.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Fill_Frame_Related_Fields C-Win\nPROCEDURE Fill_Frame_Related_Fields :\n/*------------------------------------------------------------------------------\n  Purpose : Fill Frame Related Fields\n------------------------------------------------------------------------------*/\n\n   RUN Get_Frame_Rel_Fields_typ_acc.\n   RUN Get_Frame_Rel_Fields_num_bnk.\n   RUN Get_Frame_Rel_Fields_cod_cur.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Fill_Parameters C-Win\nPROCEDURE Fill_Parameters :\n/*------------------------------------------------------------------------------\n  Purpose : Fill Parameters\n------------------------------------------------------------------------------*/\n\n   ASSIGN p-idt_bnk_acc = w-idt_bnk_acc.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Get_Frame_Related_Fields_idt_bnk_acc C-Win\nPROCEDURE Get_Frame_Related_Fields_idt_bnk_acc :\n/*------------------------------------------------------------------------------\n  Purpose : Get Frame Related Fields of w-idt_bnk_acc\n------------------------------------------------------------------------------*/\n\n   RUN get_bnk_acc_ext_api.p ON ghAppServer\n      (\n       INPUT  w-idt_bnk_acc,\n       OUTPUT w-num_ctr_bnk_acc,\n       OUTPUT v-rowid,\n       OUTPUT v-cod_act,\n       OUTPUT v-typ_err,\n       OUTPUT v-oms_err\n      ).\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Get_Frame_Rel_Fields_cod_cur C-Win\nPROCEDURE Get_Frame_Rel_Fields_cod_cur :\n/*------------------------------------------------------------------------------\n  Purpose : Get Related Frame Fields of w-cod_cur\n------------------------------------------------------------------------------*/\n\n   RUN get_cur_api.p ON ghAppServer\n      (\n       INPUT  w-cod_cur,\n       OUTPUT w-dsc_cur,\n       OUTPUT v-cod_act,\n       OUTPUT v-typ_err,\n       OUTPUT v-oms_err\n      ).\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Get_Frame_Rel_Fields_num_bnk C-Win\nPROCEDURE Get_Frame_Rel_Fields_num_bnk :\n/*------------------------------------------------------------------------------\n  Purpose : Get Related Frame Fields of w-num_bnk\n------------------------------------------------------------------------------*/\n\n   EMPTY TEMP-TABLE tmp_bnk_wrk.\n   RUN bnk_get_buf_api.p ON ghAppServer\n      (\n       INPUT        w-num_bnk,\n       OUTPUT TABLE tmp_bnk_wrk,\n       OUTPUT       v-cod_act,\n       OUTPUT       v-typ_err,\n       OUTPUT       v-oms_err\n      ).\n\n   FIND FIRST tmp_bnk_wrk NO-LOCK NO-ERROR.\n   IF AVAILABLE tmp_bnk_wrk\n   THEN DO:\n      ASSIGN w-nam_bnk = tmp_bnk_wrk.nam_bnk\n             w-adr_bnk = tmp_bnk_wrk.adr_bnk\n             w-wpl_bnk = tmp_bnk_wrk.wpl_bnk.\n\n      /************************************************************************/\n      /* Ophalen landnaam van de Bank                                         */\n      /************************************************************************/\n      RUN lnd_get_api.p ON ghAppServer\n         (\n          INPUT  tmp_bnk_wrk.cod_lnd,\n          OUTPUT w-lnd_bnk,\n          OUTPUT v-rowid,\n          OUTPUT v-cod_act,\n          OUTPUT v-typ_err,\n          OUTPUT v-oms_err\n         ).\n   END.\n   ELSE DO:\n      ASSIGN w-nam_bnk = \"\":U\n             w-adr_bnk = \"\":U\n             w-wpl_bnk = \"\":U\n             w-lnd_bnk = \"\":U.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Get_Frame_Rel_Fields_typ_acc C-Win\nPROCEDURE Get_Frame_Rel_Fields_typ_acc :\n/*------------------------------------------------------------------------------\n  Purpose : Get Related Frame Fields of w-typ_acc\n------------------------------------------------------------------------------*/\n\n   RUN typ_acc_get_api.p ON ghAppServer\n      (\n       INPUT  w-typ_acc,\n       OUTPUT w-dsc_acc,\n       OUTPUT v-rowid,\n       OUTPUT v-cod_act,\n       OUTPUT v-typ_err,\n       OUTPUT v-oms_err\n      ).\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Get_Temp_Table_Buffers C-Win\nPROCEDURE Get_Temp_Table_Buffers :\n/*------------------------------------------------------------------------------\n  Purpose : Get_Temp_Table_Buffers\n------------------------------------------------------------------------------*/\n\n   FIND FIRST tmp_bnk_acc_ext_wrk NO-ERROR.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Hide_Non_Check_Buttons C-Win\nPROCEDURE Hide_Non_Check_Buttons :\n/*------------------------------------------------------------------------------\n  Purpose : Hide Non Check Buttons\n------------------------------------------------------------------------------*/\n\n   DO WITH FRAME {&FRAME-NAME} :\n      ASSIGN BTN-ADD:HIDDEN = TRUE\n             BTN-CHA:HIDDEN = TRUE\n             BTN-DEL:HIDDEN = TRUE\n             BTN-EXI:HIDDEN = TRUE\n             BTN-OKE:HIDDEN = TRUE\n             BTN-CAN:HIDDEN = TRUE.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Init_Program C-Win\nPROCEDURE Init_Program :\n/*------------------------------------------------------------------------------\n  Purpose : Init Program\n------------------------------------------------------------------------------*/\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Init_Startup.\n   RUN Load_Mouse_Menu.\n   RUN Bepaal_Authorisatie.\n   RUN Bepaal_Autorisatie_Jump.\n   RUN Create_Temp_Table_Buffers.\n   RUN Start_AppServer_Procedure (INPUT 'Init_Program':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   setStatus('INQ':U).\n\n   CASE v-cod_act:\n   WHEN 'OKE':U      /* Record gevonden */\n   THEN DO:\n      RUN Fill_Frame.\n      RUN Enable_Frame_Keys.\n      RUN Disable_Frame_Fields.\n      RUN Enable_Browse_Buttons.\n      RUN Enable_Methode_Buttons.\n      RUN Disable_Transaction_Buttons.\n      RUN Enable_Button_Exit.\n      RUN Display_Frame.\n      RUN Apply_Entry_To_Field (INPUT 'idt_bnk_acc':U).\n   END. /* OKE */\n   WHEN 'FIL_BUF':U  /* Record niet gevonden */\n   THEN DO:\n      RUN Fill_Frame.\n      RUN Disable_Frame_Keys.\n      RUN Disable_Frame_Fields.\n      RUN Disable_Browse_Buttons.\n      RUN Disable_Transaction_Buttons.\n      RUN Enable_Methode_Buttons.\n      RUN Disable_Buttons_Wij_Ver.\n      RUN Display_Frame.\n   END. /* FIL_BUF */\n   END CASE.\n\n   RUN Finish_Startup.\n\n   /***************************************************************************/\n   /* Afhanddelen van het functie type nadat alle initialisaties hebben       */\n   /* plaatsgevonden.                                                         */\n   /***************************************************************************/\n   CASE p-typ_fun :\n   WHEN 'ADD':U\n   THEN DO:\n      RUN Start_Create_Record.\n   END.\n   WHEN 'CHA':U\n   THEN DO:\n      IF v-cod_act = 'OKE':U\n      THEN DO:\n         RUN Start_Change_Record.\n      END.\n   END.\n   WHEN 'CHK':U\n   THEN DO:\n      /************************************************************************/\n      /* Indien er geen record wordt gevonden, dan kan er niet gecheck worden */\n      /* Er wordt een melding gegeven en het scherm wordt afgesloten.         */\n      /************************************************************************/\n      IF v-cod_act = 'OKE':U\n      THEN DO:\n         RUN Start_Check_Record.\n      END.\n   END.\n   END CASE.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Load_Mouse_Pointers C-Win\nPROCEDURE Load_Mouse_Pointers :\n/*------------------------------------------------------------------------------\n  Purpose : Load Mouse Pointers\n------------------------------------------------------------------------------*/\n\n   DO WITH FRAME {&FRAME-NAME} :\n      IF getStatus() = 'INQ':U\n      THEN DO:\n         w-idt_bnk_acc:LOAD-MOUSE-POINTER('listbox.cur':U).\n         w-typ_acc:LOAD-MOUSE-POINTER('IBEAM':U).\n         w-num_bnk:LOAD-MOUSE-POINTER('IBEAM':U).\n         w-cod_cur:LOAD-MOUSE-POINTER('IBEAM':U).\n      END.\n      ELSE DO:\n         w-idt_bnk_acc:LOAD-MOUSE-POINTER('IBEAM':U).\n         w-typ_acc:LOAD-MOUSE-POINTER('listbox.cur':U).\n         w-num_bnk:LOAD-MOUSE-POINTER('listbox.cur':U).\n         w-cod_cur:LOAD-MOUSE-POINTER('listbox.cur':U).\n      END.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Oke_Change_Record C-Win\nPROCEDURE Oke_Change_Record :\n/*------------------------------------------------------------------------------\n  Purpose : Oke Change Record\n------------------------------------------------------------------------------*/\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Assign_Frame_Fields.\n   RUN Update_Temp_Table_Buffers.\n   RUN Start_AppServer_Procedure (INPUT 'Oke_Change_Record':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   CASE v-cod_act:\n\n   WHEN 'OKE':U      /* Record gewijzigd */\n   THEN DO:\n      setStatus('INQ':U).\n      RUN Fill_Frame.\n      RUN Enable_Frame_Keys.\n      RUN Disable_Frame_Fields.\n      RUN Enable_Browse_Buttons.\n      RUN Enable_Methode_Buttons.\n      RUN Disable_Transaction_Buttons.\n      RUN Enable_Menu_Item.\n      RUN Enable_Button_Exit.\n      RUN Display_Frame.\n      RUN Fill_Parameters.\n      RUN Apply_Entry_To_Field (INPUT 'idt_bnk_acc':U).\n   END. /* OKE */\n\n   WHEN 'CHK_FLD':U  /* Veld controle */\n   THEN RUN Apply_Entry_To_Field (INPUT v-idt_fld).\n\n   END CASE.\n\n   /***************************************************************************/\n   /* Functie automatisch afsluiten indien deze in 'CHA' mode is gestart.     */\n   /***************************************************************************/\n   IF p-typ_fun = 'CHA':U THEN DO:\n      APPLY \"CLOSE\":U TO THIS-PROCEDURE.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Oke_Create_Record C-Win\nPROCEDURE Oke_Create_Record :\n/*------------------------------------------------------------------------------\n  Purpose : Oke Create Record\n------------------------------------------------------------------------------*/\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Assign_Frame_Keys.\n   RUN Assign_Frame_Fields.\n   RUN Update_Temp_Table_Buffers.\n   RUN Start_AppServer_Procedure (INPUT 'Oke_Create_Record':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   CASE v-cod_act:\n\n      WHEN 'OKE':U      /* Record toegevoegd */\n      THEN DO:\n         setStatus('INQ':U).\n         RUN Fill_Frame.\n         RUN Enable_Frame_Keys.\n         RUN Disable_Frame_Fields.\n         RUN Enable_Browse_Buttons.\n         RUN Enable_Methode_Buttons.\n         RUN Disable_Transaction_Buttons.\n         RUN Enable_Menu_Item.\n         RUN Enable_Button_Exit.\n         RUN Display_Frame.\n         RUN Fill_Parameters.\n         RUN Apply_Entry_To_Field (INPUT 'idt_bnk_acc':U).\n      END. /* OKE */\n\n      WHEN 'CHK_FLD':U  /* Veld controle */\n      THEN RUN Apply_Entry_To_Field (INPUT v-idt_fld).\n\n   END CASE.\n\n   /***************************************************************************/\n   /* Functie automatisch afsluiten indien deze in 'ADD' mode is gestart.     */\n   /***************************************************************************/\n   IF p-typ_fun = 'ADD':U THEN DO:\n      APPLY \"CLOSE\":U TO THIS-PROCEDURE.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_AppServer_Procedure C-Win\nPROCEDURE Start_AppServer_Procedure :\n/*------------------------------------------------------------------------------\n  Purpose : Start AppServer Procedure\n------------------------------------------------------------------------------*/\n\n   DEFINE INPUT PARAMETER p-nam_prc AS CHARACTER FORMAT \"X(50)\":U NO-UNDO.\n\n   RUN bnk_acc_ext_api.p ON ghAppServer\n      (\n       INPUT              p-nam_prc,\n       INPUT-OUTPUT TABLE tmp_bnk_acc_ext_wrk,\n       OUTPUT             v-cod_act,\n       OUTPUT             v-typ_err,\n       OUTPUT             v-oms_err,\n       OUTPUT             v-idt_fld\n      ).\n\n   RUN Get_Temp_Table_Buffers.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_Change_Record C-Win\nPROCEDURE Start_Change_Record :\n/*------------------------------------------------------------------------------\n  Purpose : Start Change Record\n------------------------------------------------------------------------------*/\n\n   DEFINE VARIABLE v-typ_fun  AS CHARACTER   NO-UNDO.\n\n   IF NOT v-flg_cha\n   THEN DO:\n      ASSIGN\n         v-typ_fun = {fna getMessage 915,v-cod_tal,'',''}  /* change */\n         v-oms_err = {fna getMessage 913,v-cod_tal,'',\"v-typ_fun + CHR(3) + v-nam_tbl\"}\n         .\n      RUN Display_Message\n         (\n          INPUT  v-oms_err,\n          INPUT  'INF':U,\n          OUTPUT v-flg_oke\n         ).\n      RETURN.\n   END.\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Start_AppServer_Procedure (INPUT 'Start_Change_Record':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   CASE v-cod_act:\n\n   WHEN 'OKE':U      /* Wijzigen kan beginnen */\n   THEN DO:\n      setStatus('CHA':U).\n      RUN Fill_Frame.\n      RUN Disable_Frame_Keys.\n      RUN Enable_Frame_Fields.\n      RUN Disable_Status_Field.\n      RUN Disable_Methode_Buttons.\n      RUN Disable_Button_Exit.\n      RUN Enable_Transaction_Buttons.\n      RUN Disable_Browse_Buttons.\n      RUN Disable_Menu_Item.\n      RUN Display_Frame.\n      RUN Apply_Entry_To_Field (INPUT 'typ_acc':U).\n   END. /* OKE */\n\n   END CASE.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_Check_Record C-Win\nPROCEDURE Start_Check_Record :\n/*------------------------------------------------------------------------------\n  Purpose : Start Check Record\n------------------------------------------------------------------------------*/\n\n   DEFINE VARIABLE v-typ_fun  AS CHARACTER   NO-UNDO.\n\n   IF NOT v-flg_cha\n   THEN DO:\n      ASSIGN\n         v-typ_fun = {fna getMessage 947,v-cod_tal,'',''}  /* check */\n         v-oms_err = {fna getMessage 913,v-cod_tal,'',\"v-typ_fun + CHR(3) + v-nam_tbl\"}\n         .\n      RUN Display_Message\n         (\n          INPUT  v-oms_err,\n          INPUT  'INF':U,\n          OUTPUT v-flg_oke\n         ).\n      RETURN.\n   END.\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Start_AppServer_Procedure (INPUT 'Start_Check_Record':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   CASE v-cod_act:\n   WHEN 'OKE':U      /* Checken kan beginnen */\n   THEN DO:\n      setStatus('CHK':U).\n      RUN Disable_Frame_Keys.\n      RUN Disable_Frame_Fields.\n      RUN Disable_Browse_Buttons.\n      RUN Hide_Non_Check_Buttons.\n      RUN Enable_Check_Buttons.\n   END. /* OKE */\n   END CASE.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_Create_Record C-Win\nPROCEDURE Start_Create_Record :\n/*------------------------------------------------------------------------------\n  Purpose : Start Create Record\n------------------------------------------------------------------------------*/\n\n   DEFINE VARIABLE v-typ_fun  AS CHARACTER   NO-UNDO.\n\n   IF NOT v-flg_add\n   THEN DO:\n      ASSIGN\n         v-typ_fun = {fna getMessage 914,v-cod_tal,'',''}  /* add */\n         v-oms_err = {fna getMessage 913,v-cod_tal,'',\"v-typ_fun + CHR(3) + v-nam_tbl\"}\n         .\n      RUN Display_Message\n         (\n          INPUT  v-oms_err,\n          INPUT  'INF':U,\n          OUTPUT v-flg_oke\n         ).\n      RETURN.\n   END.\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Start_AppServer_Procedure (INPUT 'Start_Create_Record':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   CASE v-cod_act:\n\n   WHEN 'OKE':U      /* Toevoegen kan beginnen */\n   THEN DO:\n      setStatus(\"ADD\":u).\n      RUN Fill_Frame.\n      RUN Disable_Frame_Keys.\n      RUN Enable_Frame_Fields.\n      RUN Disable_Status_Field.\n      RUN Disable_Methode_Buttons.\n      RUN Disable_Button_Exit.\n      RUN Enable_Transaction_Buttons.\n      RUN Disable_Browse_Buttons.\n      RUN Disable_Menu_Item.\n      RUN Display_Frame.\n      RUN Apply_Entry_To_Field (INPUT 'typ_acc':U).\n   END. /* OKE */\n\n   END CASE.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_Delete_Record C-Win\nPROCEDURE Start_Delete_Record :\n/*------------------------------------------------------------------------------\n  Purpose : Start Delete Record\n------------------------------------------------------------------------------*/\n\n   DEFINE VARIABLE v-typ_fun  AS CHARACTER   NO-UNDO.\n\n   IF NOT v-flg_del\n   THEN DO:\n      ASSIGN\n         v-typ_fun = {fna getMessage 916,v-cod_tal,'',''}  /* delete */\n         v-oms_err = {fna getMessage 913,v-cod_tal,'',\"v-typ_fun + CHR(3) + v-nam_tbl\"}\n         .\n      RUN Display_Message\n         (\n          INPUT  v-oms_err,\n          INPUT  'INF':U,\n          OUTPUT v-flg_oke\n         ).\n      RETURN.\n   END.\n\n   ASSIGN\n      v-typ_fun = {fna getMessage 916,v-cod_tal,'',''}  /* delete */\n      v-oms_err = {fna getMessage 921,v-cod_tal,'',\"v-typ_fun + CHR(3) + v-nam_tbl\"}\n      .\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  'QUE':U,\n       OUTPUT v-flg_oke\n      ).\n   IF v-flg_oke = FALSE\n   THEN RETURN.\n\n   SESSION:SET-WAIT-STATE(\"GENERAL\":U).\n   RUN Start_AppServer_Procedure (INPUT 'Oke_Delete_Record':U).\n   SESSION:SET-WAIT-STATE(\"\":U).\n\n   RUN Display_Message\n      (\n       INPUT  v-oms_err,\n       INPUT  v-typ_err,\n       OUTPUT v-flg_oke\n      ).\n\n   CASE v-cod_act:\n\n   WHEN 'OKE':U         /* Record verwijderd en nieuwe record gevonden */\n   THEN DO:\n      RUN Fill_Frame.\n      RUN Display_Frame.\n      RUN Apply_Entry_To_Field (INPUT 'idt_bnk_acc':U).\n   END. /* OKE */\n\n   WHEN 'FIL_BUF':U     /* Record verwijderd maar geen nieuwe record gevonden */\n   THEN DO:\n      RUN Fill_Frame.\n      RUN Disable_Frame_Keys.\n      RUN Disable_Frame_Fields.\n      RUN Disable_Browse_Buttons.\n      RUN Disable_Transaction_Buttons.\n      RUN Enable_Methode_Buttons.\n      RUN Disable_Buttons_Wij_Ver.\n      RUN Enable_Button_Exit.\n      RUN Enable_Menu_Item.\n      RUN Display_Frame.\n   END. /* FIL_BUF */\n\n   WHEN 'BUF_CHA':U     /* Record gewijzigd door een andere gebruiker */\n   THEN RUN Get_Record (INPUT 'CUR':U).\n\n   WHEN 'BUF_DEL':U     /* Record verwijderd door een andere gebruiker */\n   THEN RUN Get_Record (INPUT 'FST':U).\n\n   WHEN 'REF_INT':U OR  /* Record mag niet verwijderd worden */\n   WHEN 'BUF_LCK':U\n   THEN DO:\n   END.\n\n   END CASE.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_Listbox_cod_cur C-Win\nPROCEDURE Start_Listbox_cod_cur :\n/*------------------------------------------------------------------------------\n  Purpose : Start Listbox op veld w-cod_cur\n------------------------------------------------------------------------------*/\n\n   ASSIGN INPUT FRAME {&FRAME-NAME} w-cod_cur.\n   RUN crs900005.w\n      (\n       INPUT-OUTPUT w-cod_cur,\n       OUTPUT       w-dsc_cur,\n       OUTPUT       v-cod_can\n      ).\n\n   IF v-cod_can = FALSE\n   THEN DO:\n      RUN Get_Frame_Rel_Fields_cod_cur.\n      RUN Dis_Frame_Rel_Fields_cod_cur.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_Listbox_idt_bnk_acc C-Win\nPROCEDURE Start_Listbox_idt_bnk_acc :\n/*------------------------------------------------------------------------------\n  Purpose : Start_Listbox_idt_bnk_acc\n------------------------------------------------------------------------------*/\n\n   IF getStatus() = 'INQ':U\n   THEN DO:\n      ASSIGN v-idt_bnk_acc = 0.\n      RUN lbx_bnk_acc_ext.w\n         (\n          INPUT-OUTPUT v-idt_bnk_acc,\n          OUTPUT       w-num_ctr_bnk_acc,\n          OUTPUT       v-rowid,\n          OUTPUT       v-cod_can\n         ).\n      IF v-cod_can = TRUE\n      THEN RETURN.\n\n      ASSIGN tmp_bnk_acc_ext_wrk.bnk_acc_ext-rowid = v-rowid.\n      RUN Get_Record (INPUT 'CUR':U).\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_Listbox_num_bnk C-Win\nPROCEDURE Start_Listbox_num_bnk :\n/*------------------------------------------------------------------------------\n  Purpose : Start Listbox op veld w-num_bnk\n------------------------------------------------------------------------------*/\n\n   ASSIGN INPUT FRAME {&FRAME-NAME} w-num_bnk.\n   RUN crs000325.w\n      (\n       OUTPUT       w-nam_bnk,\n       INPUT-OUTPUT w-num_bnk,\n       OUTPUT       v-cod_can\n      ).\n\n   IF v-cod_can = FALSE\n   THEN DO:\n      RUN Get_Frame_Rel_Fields_num_bnk.\n      RUN Dis_Frame_Rel_Fields_num_bnk.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_Listbox_typ_acc C-Win\nPROCEDURE Start_Listbox_typ_acc :\n/*------------------------------------------------------------------------------\n  Purpose : Start Listbox op veld w-typ_acc\n------------------------------------------------------------------------------*/\n\n   ASSIGN INPUT FRAME {&FRAME-NAME} w-typ_acc.\n   RUN lbx_bnk_acc_typ.w\n     (\n      INPUT-OUTPUT v-bnk_acc_grp,\n      INPUT-OUTPUT w-typ_acc,\n      OUTPUT       w-dsc_acc,\n      OUTPUT       v-rowid,\n      OUTPUT       v-cod_can\n     ).\n\n   IF v-cod_can = FALSE\n   THEN DO:\n      RUN Get_Frame_Rel_Fields_typ_acc.\n      RUN Dis_Frame_Rel_Fields_typ_acc.\n   END.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Start_Program_Value C-Win\nPROCEDURE Start_Program_Value :\n/*------------------------------------------------------------------------------\n  Purpose : Start Program Value\n------------------------------------------------------------------------------*/\n\n   RUN Get_Procedure_Handle.\n   IF VALID-HANDLE(v-sub_prc_hdl) THEN DO:\n       v-wid_hdl = v-sub_prc_hdl:CURRENT-WINDOW.\n       IF VALID-HANDLE(v-wid_hdl) THEN DO:\n           v-flg     = v-wid_hdl:MOVE-TO-TOP() = TRUE.\n           ASSIGN v-wid_hdl:WINDOW-STATE = 3.\n       END.\n       RETURN.\n   END.\n   /***************************************************************************/\n   /* Start programma met bijbehorende parameters.                            */\n   /***************************************************************************/\n   CASE v-sub_prc_nam:\n   WHEN \"crs000324.w\":U  /* Bank */\n   THEN DO:\n      RUN VALUE(v-sub_prc_nam) PERSISTENT SET v-sub_prc_hdl\n         (\n          INPUT  w-num_bnk,\n          OUTPUT v-cod_can\n         ).\n   END.\n   WHEN \"crs000004.w\":U /* Currency */\n   THEN DO:\n      RUN VALUE(v-sub_prc_nam) PERSISTENT SET v-sub_prc_hdl\n         (\n          INPUT  w-cod_cur,\n          OUTPUT v-cod_can\n         ).\n   END.\n   END CASE.\n   /****************************************************************************/\n   /* Bijhouden procedure handles van opgestarte programma's                   */\n   /****************************************************************************/\n   CREATE sub_prc.\n   ASSIGN sub_prc.sub_prc_nam = v-sub_prc_nam\n          sub_prc.sub_prc_hdl = v-sub_prc_hdl\n          sub_prc.sub_prc_par = v-sub_prc_par.\n\n   /****************************************************************************/\n   /* Apply \"ENTRY\" TO CURRENT-WINDOW.                                         */\n   /****************************************************************************/\n   IF VALID-HANDLE(v-wid_hdl) THEN DO:\n       v-wid_hdl = v-sub_prc_hdl:CURRENT-WINDOW.\n       APPLY \"ENTRY\" TO v-wid_hdl.\n   END.\n\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Set_Bnk_Acc_Num_Fmt C-Win\nPROCEDURE Set_Bnk_Acc_Num_Fmt :\n/*------------------------------------------------------------------------------\n  Purpose: Set_Bnk_Acc_Num_Fmt\n------------------------------------------------------------------------------*/\nDEFINE VARIABLE v-IBAN_fmt AS CHARACTER NO-UNDO.\n\n   ASSIGN v-IBAN_fmt = {fna getIbanFormat w-num_bnk,\"v-sta_fun <> 'INQ':U\"}.\n\n   IF v-IBAN_fmt <> \"\":U\n   THEN\n      ASSIGN w-num_ctr_bnk_acc:FORMAT IN FRAME {&FRAME-NAME} = v-IBAN_fmt.\n   ELSE\n      ASSIGN w-num_ctr_bnk_acc:FORMAT IN FRAME {&FRAME-NAME} = \"X(50)\":U.\n\n   RETURN \"\":U.\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE Update_Temp_Table_Buffers C-Win\nPROCEDURE Update_Temp_Table_Buffers :\n/*------------------------------------------------------------------------------\n  Purpose : Update Temp Table Buffers\n------------------------------------------------------------------------------*/\n\n   ASSIGN tmp_bnk_acc_ext_wrk.idt_bnk_acc      = w-idt_bnk_acc\n          tmp_bnk_acc_ext_wrk.typ_acc          = w-typ_acc\n          tmp_bnk_acc_ext_wrk.num_bnk          = w-num_bnk\n          tmp_bnk_acc_ext_wrk.cod_cur          = w-cod_cur\n          tmp_bnk_acc_ext_wrk.num_ctr_bnk_acc  = w-num_ctr_bnk_acc\n          tmp_bnk_acc_ext_wrk.nam_ctr_bnk_acc  = w-nam_ctr_bnk_acc\n          tmp_bnk_acc_ext_wrk.wpl_bnk_acc      = w-wpl_bnk_acc\n          tmp_bnk_acc_ext_wrk.sta_bnk_acc      = w-sta_bnk_acc\n          tmp_bnk_acc_ext_wrk.typ_src          = 'Manual':U\n          .\n\nEND PROCEDURE.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n/* ************************  Function Implementations ***************** */\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION getStatus C-Win\nFUNCTION getStatus RETURNS CHARACTER\n  ( /* parameter-definitions */ ) :\n/*------------------------------------------------------------------------------\n  Purpose : getStatus\n------------------------------------------------------------------------------*/\n\n  RETURN v-sta_fun.\n\nEND FUNCTION.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION setStatus C-Win\nFUNCTION setStatus RETURNS LOGICAL\n  ( p-sta AS CHARACTER ) :\n/*------------------------------------------------------------------------------\n  Purpose : setStatus, hierin worden alle status afhankelijke procedures doorgevoerd\n------------------------------------------------------------------------------*/\n\n   IF v-sta_fun = p-sta\n   THEN RETURN TRUE.\n\n   v-sta_fun = p-sta.\n\n   /*************************************************************************/\n   /* venster titel afhandeling                                             */\n   /*************************************************************************/\n   RUN Display_Window_Title.\n\n   /*************************************************************************/\n   /* muis pointers afhandeling                                             */\n   /*************************************************************************/\n   RUN Load_Mouse_Pointers.\n\n   RETURN TRUE.\n\nEND FUNCTION.\n\n/* _UIB-CODE-BLOCK-END */\n&ANALYZE-RESUME\n\n",
+					"settings":
+					{
+						"buffer_size": 67898,
+						"line_ending": "Windows"
+					}
+				}
+			],
+			"build_system": "",
+			"command_palette":
+			{
+				"height": 0.0,
+				"selected_items":
+				[
+				],
+				"width": 0.0
+			},
+			"console":
+			{
+				"height": 0.0
+			},
+			"distraction_free":
+			{
+				"menu_visible": true,
+				"show_minimap": false,
+				"show_open_files": false,
+				"show_tabs": false,
+				"side_bar_visible": false,
+				"status_bar_visible": false
+			},
+			"file_history":
+			[
+				"/E/MyWorkspace/ordina_estiamtion/doc/ExcelImporter/VectorialEstimation/EstimationUtility.cs",
+				"/E/MyWorkspace/2048_bot/game.js",
+				"/E/MyWorkspace/ordina_estiamtion/doc/Deliverables/VectorialEstimation.exe.config",
+				"/C/Users/andreica/Desktop/tmp/contest_2048_trial/key_press_javascript.py"
+			],
+			"find":
+			{
+				"height": 34.0
+			},
+			"find_in_files":
+			{
+				"height": 0.0,
+				"where_history":
+				[
+				]
+			},
+			"find_state":
+			{
+				"case_sensitive": false,
+				"find_history":
+				[
+					"assign_frame_keys",
+					"setStatus",
+					"v-cod_act",
+					"v-typ_fun",
+					"b-typ_fun",
+					"v-flg_oke",
+					"current",
+					"do_work",
+					"   "
+				],
+				"highlight": true,
+				"in_selection": false,
+				"preserve_case": false,
+				"regex": true,
+				"replace_history":
+				[
+				],
+				"reverse": false,
+				"show_context": true,
+				"use_buffer2": true,
+				"whole_word": false,
+				"wrap": true
+			},
+			"groups":
+			[
+				{
+					"selected": 1,
+					"sheets":
+					[
+						{
+							"buffer": 0,
+							"file": "/E/MyWorkspace/resume/resume.json",
+							"settings":
+							{
+								"buffer_size": 6127,
+								"regions":
+								{
+								},
+								"selection":
+								[
+									[
+										5774,
+										5774
+									]
+								],
+								"settings":
+								{
+									"codeintel": true,
+									"codeintel_config":
+									{
+										"JavaScript":
+										{
+											"codeintel_max_recursive_dir_depth": 2,
+											"codeintel_scan_files_in_project": false,
+											"javascriptExtraPaths":
+											[
+											]
+										},
+										"PHP":
+										{
+											"codeintel_max_recursive_dir_depth": 5,
+											"codeintel_scan_files_in_project": false,
+											"phpExtraPaths":
+											[
+											]
+										},
+										"Python":
+										{
+											"env":
+											{
+											}
+										}
+									},
+									"codeintel_enabled_languages":
+									[
+										"JavaScript",
+										"Mason",
+										"XBL",
+										"XUL",
+										"RHTML",
+										"SCSS",
+										"Python",
+										"HTML",
+										"Ruby",
+										"Python3",
+										"XML",
+										"Sass",
+										"XSLT",
+										"Django",
+										"HTML5",
+										"Perl",
+										"CSS",
+										"Twig",
+										"Less",
+										"Smarty",
+										"Node.js",
+										"Tcl",
+										"TemplateToolkit",
+										"PHP"
+									],
+									"codeintel_live": true,
+									"codeintel_live_enabled_languages":
+									[
+										"JavaScript",
+										"Mason",
+										"XBL",
+										"XUL",
+										"RHTML",
+										"SCSS",
+										"Python",
+										"HTML",
+										"Ruby",
+										"Python3",
+										"XML",
+										"Sass",
+										"XSLT",
+										"Django",
+										"HTML5",
+										"Perl",
+										"CSS",
+										"Twig",
+										"Less",
+										"Smarty",
+										"Node.js",
+										"Tcl",
+										"TemplateToolkit",
+										"PHP"
+									],
+									"codeintel_max_recursive_dir_depth": 10,
+									"codeintel_scan_exclude_dir":
+									{
+										"JavaScript":
+										[
+											"/build/",
+											"/min/"
+										]
+									},
+									"codeintel_scan_files_in_project": true,
+									"codeintel_selected_catalogs":
+									[
+										"PyWin32",
+										"jQuery",
+										"Rails"
+									],
+									"codeintel_snippets": true,
+									"codeintel_syntax_map":
+									{
+										"Python Django": "Python"
+									},
+									"codeintel_tooltips": "popup",
+									"sublime_auto_complete": true,
+									"syntax": "Packages/JavaScript/JSON.tmLanguage",
+									"tab_size": 4,
+									"translate_tabs_to_spaces": true
+								},
+								"translation.x": 0.0,
+								"translation.y": 3783.0,
+								"zoom_level": 1.0
+							},
+							"type": "text"
+						},
+						{
+							"buffer": 1,
+							"file": "/E/MyWorkspace/2048_bot/game.js",
+							"settings":
+							{
+								"buffer_size": 14007,
+								"regions":
+								{
+								},
+								"selection":
+								[
+									[
+										1363,
+										1363
+									]
+								],
+								"settings":
+								{
+									"codeintel": true,
+									"codeintel_config":
+									{
+										"JavaScript":
+										{
+											"codeintel_max_recursive_dir_depth": 2,
+											"codeintel_scan_files_in_project": false,
+											"javascriptExtraPaths":
+											[
+											]
+										},
+										"PHP":
+										{
+											"codeintel_max_recursive_dir_depth": 5,
+											"codeintel_scan_files_in_project": false,
+											"phpExtraPaths":
+											[
+											]
+										},
+										"Python":
+										{
+											"env":
+											{
+											}
+										}
+									},
+									"codeintel_enabled_languages":
+									[
+										"JavaScript",
+										"Mason",
+										"XBL",
+										"XUL",
+										"RHTML",
+										"SCSS",
+										"Python",
+										"HTML",
+										"Ruby",
+										"Python3",
+										"XML",
+										"Sass",
+										"XSLT",
+										"Django",
+										"HTML5",
+										"Perl",
+										"CSS",
+										"Twig",
+										"Less",
+										"Smarty",
+										"Node.js",
+										"Tcl",
+										"TemplateToolkit",
+										"PHP"
+									],
+									"codeintel_live": true,
+									"codeintel_live_enabled_languages":
+									[
+										"JavaScript",
+										"Mason",
+										"XBL",
+										"XUL",
+										"RHTML",
+										"SCSS",
+										"Python",
+										"HTML",
+										"Ruby",
+										"Python3",
+										"XML",
+										"Sass",
+										"XSLT",
+										"Django",
+										"HTML5",
+										"Perl",
+										"CSS",
+										"Twig",
+										"Less",
+										"Smarty",
+										"Node.js",
+										"Tcl",
+										"TemplateToolkit",
+										"PHP"
+									],
+									"codeintel_max_recursive_dir_depth": 10,
+									"codeintel_scan_exclude_dir":
+									{
+										"JavaScript":
+										[
+											"/build/",
+											"/min/"
+										]
+									},
+									"codeintel_scan_files_in_project": true,
+									"codeintel_selected_catalogs":
+									[
+										"PyWin32",
+										"jQuery",
+										"Rails"
+									],
+									"codeintel_snippets": true,
+									"codeintel_syntax_map":
+									{
+										"Python Django": "Python"
+									},
+									"codeintel_tooltips": "popup",
+									"sublime_auto_complete": true,
+									"syntax": "Packages/JavaScript/JavaScript.tmLanguage",
+									"translate_tabs_to_spaces": false
+								},
+								"translation.x": 0.0,
+								"translation.y": 0.0,
+								"zoom_level": 1.0
+							},
+							"type": "text"
+						},
+						{
+							"buffer": 2,
+							"settings":
+							{
+								"buffer_size": 67898,
+								"regions":
+								{
+								},
+								"selection":
+								[
+									[
+										50513,
+										50513
+									]
+								],
+								"settings":
+								{
+									"codeintel": true,
+									"codeintel_config":
+									{
+										"JavaScript":
+										{
+											"codeintel_max_recursive_dir_depth": 2,
+											"codeintel_scan_files_in_project": false,
+											"javascriptExtraPaths":
+											[
+											]
+										},
+										"PHP":
+										{
+											"codeintel_max_recursive_dir_depth": 5,
+											"codeintel_scan_files_in_project": false,
+											"phpExtraPaths":
+											[
+											]
+										},
+										"Python":
+										{
+											"env":
+											{
+											}
+										}
+									},
+									"codeintel_enabled_languages":
+									[
+										"JavaScript",
+										"Mason",
+										"XBL",
+										"XUL",
+										"RHTML",
+										"SCSS",
+										"Python",
+										"HTML",
+										"Ruby",
+										"Python3",
+										"XML",
+										"Sass",
+										"XSLT",
+										"Django",
+										"HTML5",
+										"Perl",
+										"CSS",
+										"Twig",
+										"Less",
+										"Smarty",
+										"Node.js",
+										"Tcl",
+										"TemplateToolkit",
+										"PHP"
+									],
+									"codeintel_live": true,
+									"codeintel_live_enabled_languages":
+									[
+										"JavaScript",
+										"Mason",
+										"XBL",
+										"XUL",
+										"RHTML",
+										"SCSS",
+										"Python",
+										"HTML",
+										"Ruby",
+										"Python3",
+										"XML",
+										"Sass",
+										"XSLT",
+										"Django",
+										"HTML5",
+										"Perl",
+										"CSS",
+										"Twig",
+										"Less",
+										"Smarty",
+										"Node.js",
+										"Tcl",
+										"TemplateToolkit",
+										"PHP"
+									],
+									"codeintel_max_recursive_dir_depth": 10,
+									"codeintel_scan_exclude_dir":
+									{
+										"JavaScript":
+										[
+											"/build/",
+											"/min/"
+										]
+									},
+									"codeintel_scan_files_in_project": true,
+									"codeintel_selected_catalogs":
+									[
+										"PyWin32",
+										"jQuery",
+										"Rails"
+									],
+									"codeintel_snippets": true,
+									"codeintel_syntax_map":
+									{
+										"Python Django": "Python"
+									},
+									"codeintel_tooltips": "popup",
+									"sublime_auto_complete": true,
+									"syntax": "Packages/Progress4gl/4gl.tmLanguage",
+									"tab_size": 4,
+									"translate_tabs_to_spaces": true
+								},
+								"translation.x": 0.0,
+								"translation.y": 20982.0,
+								"zoom_level": 1.0
+							},
+							"type": "text"
+						}
+					]
+				}
+			],
+			"incremental_find":
+			{
+				"height": 0.0
+			},
+			"input":
+			{
+				"height": 0.0
+			},
+			"layout":
+			{
+				"cells":
+				[
+					[
+						0,
+						0,
+						1,
+						1
+					]
+				],
+				"cols":
+				[
+					0.0,
+					1.0
+				],
+				"rows":
+				[
+					0.0,
+					1.0
+				]
+			},
+			"menu_visible": true,
+			"position": "0,2,3,-1,-1,-1,-1,565,26,26,682",
+			"replace":
+			{
+				"height": 0.0
+			},
+			"save_all_on_build": true,
+			"select_file":
+			{
+				"height": 0.0,
+				"selected_items":
+				[
+				],
+				"width": 0.0
+			},
+			"select_project":
+			{
+				"height": 0.0,
+				"selected_items":
+				[
+				],
+				"width": 0.0
+			},
+			"show_minimap": true,
+			"show_open_files": false,
+			"show_tabs": true,
+			"side_bar_visible": true,
+			"side_bar_width": 150.0,
+			"status_bar_visible": true,
+			"window_id": 1,
+			"workspace_name": ""
+		}
+	],
+	"workspaces":
+	{
+		"recent_workspaces":
+		[
+		]
+	}
+}

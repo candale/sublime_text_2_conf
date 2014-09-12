@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+        <key>fileTypes</key>
+        <array>
+                <string>p</string>
+                <string>i</string>
+                <string>w</string>
+        </array>
+        <key>name</key>
+        <string>Progress4gl</string>
+        <key>patterns</key>
+        <array>
+                <dict>
+                        <key>begin</key>
+                        <string>/\*</string>
+                        <key>end</key>
+                        <string>\*/</string>
+                        <key>name</key>
+                        <string>comment.block.source.Progress4gl</string>
+                        <key>patterns</key>
+                        <array>
+                                <dict>
+                                        <key>match</key>
+                                        <string>.</string>
+                                </dict>
+                        </array>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>A comment starting with '#'</string>
+                        <key>match</key>
+                        <string>#.*$</string>
+                        <key>name</key>
+                        <string>comment.number-sign.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Single quoted string</string>
+                        <key>match</key>
+                        <string>('(?:\\'|.)*?')</string>
+                        <key>name</key>
+                        <string>string.single.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Double quoted string</string>
+                        <key>match</key>
+                        <string>(\"(?:\\"|.)*?\")</string>
+                        <key>name</key>
+                        <string>string.double.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Operators</string>
+                        <key>match</key>
+                        <string>(?i)(=|!=|\+|-|/|&lt;|&gt;|,|(\s(or|and|is|mod|not|initialize)(?=(\s|$)))|((\s|^)set(?=\s)))</string>
+                        <key>name</key>
+                        <string>keyword.operator.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Constants provided by de language</string>
+                        <key>match</key>
+                        <string>(?i)(dirty read|null|true|false|notfound)</string>
+                        <key>name</key>
+                        <string>constant.language.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Variables provided by de language</string>
+                        <key>match</key>
+                        <string>(?i)(isolation|today|\sstatus|pageno)</string>
+                        <key>name</key>
+                        <string>variable.language.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Variables provided by de language</string>
+                        <key>match</key>
+                        <string>(?i)^[\s\t]*procedure\s+.+:</string>
+                        <key>name</key>
+                        <string>meta.procedure.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Control</string>
+                        <key>match</key>
+                        <string>(?i)((\s|^)case(\s*|$)|continue (.*)|when |find |first |last |procedure |otherwise|end|do|\.|undo|next|end case|assign[\r\n ]+|&SCOPED-DEFINE|while |end while|(\s|^)for(\s|$)|foreach |each | into |end for(each)?|(\s|^)if(?=\s+|$)|(\s+|^)then(\s+|$)|(\s+|^)else(\s+|$)|end if|exit (.*))</string>
+                        <key>name</key>
+                        <string>keyword.control.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Keywords</string>
+                        <key>match</key>
+                        <string>(?i)( between |call(?=\s+|$)| clipped|output |input |input-output |to |value[\s]*|(\s|^)close\s+(form|window)*|(\s|^)create\s+(temp\s+)?(table|index)(?=\s+|$)|database |\sreturning |declare |delete(?=\s|$)|display\s+|((\s|^)drop\s+(table|index)(\s|$))|((\s|^)fetch((\s+|$)|(\s+(first|last)\s+)))|(\s|^)from(\s+|$)|(\s+|^)free\s+|group by\s|(\s+|^)(desc|asc)(\s+|$)|(\s|^)insert\s+into(\s+|$)|((scroll)* cursor(?=\s)(\swith hold)*)|((top|right|bottom|left)\s+margin)|page length|(\s|^)open\s+(form|window)*|(\s|^)prepare |(^|\s)prompt\s|(^|\s)input by name(\s|$)|((start|finish)\s+report)|(\s|^)select(\s+|$)| spaces|(\s|^)update(\s+|$)|(\s|^)where(\s+|$)|(\s|^)output(?=\s|$)|(?&lt;=\s)to(?=\s|$)|order by|format( |$)|(first\s+)*page header|put |no-lock|no-error|in |unformatted |before group of|on (every|last) row|after group of| using |begin\s+work|commit\s+work|stream |close |VIEW-AS |this-procedure|INSTANTIATING-PROCEDURE|return-value |ALERT-BOX|INFORMATION|REPOSITION |TITLE|rollback\s+work|(\s+|^)values(\s+|$)|((\s|^)whenever\s+(any\s+)?error\s+(continue|stop)(\s|$))|(\s|^)run\s+|end input)</string>
+                        <key>name</key>
+                        <string>keyword.other.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Constant numeric</string>
+                        <key>match</key>
+                        <string>(?&lt;!\w)((0(x|X)[0-9a-fA-F]+)|([0-9]+(\.[0-9]+)?))</string>
+                        <key>name</key>
+                        <string>constant.numeric.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>captures</key>
+                        <dict>
+                                <key>1</key>
+                                <dict>
+                                        <key>name</key>
+                                        <string>storage.type.function.source.Progress4gl</string>
+                                </dict>
+                                <key>2</key>
+                                <dict>
+                                        <key>name</key>
+                                        <string>entity.name.function.source.Progress4gl</string>
+                                </dict>
+                                <key>3</key>
+                                <dict>
+                                        <key>name</key>
+                                        <string>variable.parameter.function.source.Progress4gl</string>
+                                </dict>
+                        </dict>
+                        <key>comment</key>
+                        <string>Functions definitions</string>
+                        <key>match</key>
+                        <string>(?i)(?&lt;!\w\s)(function|report)\s+(.*)\s*\((.*)\)</string>
+                        <key>name</key>
+                        <string>meta.function.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>captures</key>
+                        <dict>
+                                <key>1</key>
+                                <dict>
+                                        <key>name</key>
+                                        <string>storage.type.function.source.Progress4gl</string>
+                                </dict>
+                        </dict>
+                        <key>comment</key>
+                        <string>Main function definition</string>
+                        <key>match</key>
+                        <string>(?i)(main)(\s*|$)</string>
+                        <key>name</key>
+                        <string>meta.function.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Functions definitions</string>
+                        <key>match</key>
+                        <string>(?i)(end function|end main|end report)(\s*|$)</string>
+                        <key>name</key>
+                        <string>storage.type.function.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Storage types</string>
+                        <key>match</key>
+                        <string>(?i)(\schar(?=[\s\(,$]))|(\sdate(\s+|$)|decimal|handle|buffer | memptr|procedure |message |available |return|define |propath |input |init |parameter |variable |as |extent | smallint|publish |subscribe |character|integer|logical| float|temp-table |field |index |empty |let |no-undo| like |(end)* record|(((^|\s+)|(end\s+))globals))</string>
+                        <key>name</key>
+                        <string>storage.type.source.Progress4gl</string>
+                </dict>
+                <dict>
+                        <key>comment</key>
+                        <string>Some functions</string>
+                        <key>match</key>
+                        <string>(?i)((?&lt;=\s)(length|day|month|year|p_open|p_close)(?=\s*\(.*?\)))</string>
+                        <key>name</key>
+                        <string>support.function.source.Progress4gl</string>
+                </dict>
+        </array>
+        <key>scopeName</key>
+        <string>source.Progress4gl</string>
+        <key>uuid</key>
+        <string>92ff564a-23b6-471d-8a26-831d4dec08c9</string>
+</dict>
+</plist>
